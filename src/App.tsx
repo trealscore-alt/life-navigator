@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import AgentNetwork from "./pages/AgentNetwork";
 import DeviceHub from "./pages/DeviceHub";
+import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -35,6 +36,7 @@ const AppRoutes = () => (
     <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
     <Route path="/agents" element={<ProtectedRoute><AgentNetwork /></ProtectedRoute>} />
     <Route path="/devices" element={<ProtectedRoute><DeviceHub /></ProtectedRoute>} />
+    <Route path="/live" element={<ProtectedRoute><LiveMode /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
