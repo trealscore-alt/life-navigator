@@ -193,7 +193,7 @@ const LiveDemoSimulation = ({ onClose }: LiveDemoSimulationProps) => {
           {!isRunning && entries.length > 0 && (
             <span className="text-[10px] font-mono text-muted-foreground">SIMULATION COMPLETE</span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => { setScenario(null); setEntries([]); setCurrentIndex(0); if (timerRef.current) clearTimeout(timerRef.current); }} className="text-xs h-7">
+          <Button variant="ghost" size="sm" onClick={() => { setScenario(null); setEntries([]); indexRef.current = 0; if (timerRef.current) clearTimeout(timerRef.current); }} className="text-xs h-7">
             ← Scenarios
           </Button>
         </div>
