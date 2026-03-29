@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   MessageSquare, Target, Plus, LogOut, Zap, TrendingUp,
-  Heart, Brain, DollarSign, Briefcase, Activity, Settings, Radio, Bluetooth,
+  Heart, Brain, DollarSign, Briefcase, Activity, Settings, Radio, Bluetooth, Glasses, Eye,
 } from 'lucide-react';
 
 const DOMAIN_ICONS: Record<string, any> = {
@@ -178,6 +178,11 @@ const Dashboard = () => {
             className="glass-card rounded-xl p-6 space-y-3"
           >
             <h3 className="font-mono text-sm text-muted-foreground uppercase tracking-wider">Quick Actions</h3>
+            <Link to="/live" className="block">
+              <Button variant="outline" className="w-full justify-start font-mono text-xs border-primary/40 text-primary hover:bg-primary/10">
+                <Eye className="w-4 h-4 mr-2" /> Live Mode — Voice + Vision
+              </Button>
+            </Link>
             <Link to="/chat" className="block">
               <Button variant="outline" className="w-full justify-start font-mono text-xs">
                 <MessageSquare className="w-4 h-4 mr-2" /> Talk to CLRK
