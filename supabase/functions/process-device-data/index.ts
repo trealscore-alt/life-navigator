@@ -15,16 +15,13 @@ serve(async (req) => {
 
     if (!userId || !readings || !Array.isArray(readings) || readings.length === 0) {
       return new Response(JSON.stringify({ error: "userId and readings[] required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sb = createClient(supabaseUrl, supabaseKey);
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // 1. Store readings
+    // 1. Store all readings (any device type)
     const rows = readings.map((r: { deviceId: string; deviceName?: string; dataType: string; value: number; unit: string; metadata?: Record<string, unknown> }) => ({
       user_id: userId,
       device_id: r.deviceId,
@@ -38,72 +35,74 @@ serve(async (req) => {
     const { error: insertErr } = await sb.from("device_data_logs").insert(rows);
     if (insertErr) throw insertErr;
 
-    // 2. Get user's active health goals
-    const { data: healthGoals } = await sb
+    // 2. Get user's active goals across ALL domains (not just health)
+    const { data: goals } = await sb
       .from("user_goals")
       .select("id, title, domain, progress, description")
       .eq("user_id", userId)
-      .eq("status", "active")
-      .eq("domain", "health");
+      .eq("status", "active");
 
     // 3. Get recent readings for context (last 24 hours)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: recentData } = await sb
       .from("device_data_logs")
-      .select("data_type, value, unit, created_at")
+      .select("data_type, value, unit, device_name, created_at")
       .eq("user_id", userId)
       .gte("created_at", oneDayAgo)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(200);
 
-    // 4. Ask CLRK to analyze and suggest goal updates
+    // 4. Ask CLRK to analyze all device data
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     let analysis = null;
     const goalUpdates: { goalId: string; newProgress: number }[] = [];
 
-    if (LOVABLE_API_KEY && (healthGoals?.length || 0) > 0) {
+    if (LOVABLE_API_KEY) {
       // Aggregate recent data by type
-      const aggregated: Record<string, { values: number[]; unit: string }> = {};
+      const aggregated: Record<string, { values: number[]; unit: string; devices: Set<string> }> = {};
       for (const d of recentData || []) {
-        if (!aggregated[d.data_type]) aggregated[d.data_type] = { values: [], unit: d.unit };
+        if (!aggregated[d.data_type]) aggregated[d.data_type] = { values: [], unit: d.unit, devices: new Set() };
         aggregated[d.data_type].values.push(Number(d.value));
+        if (d.device_name) aggregated[d.data_type].devices.add(d.device_name);
       }
 
-      const summary: Record<string, { avg: number; min: number; max: number; count: number; unit: string }> = {};
+      const summary: Record<string, { avg: number; min: number; max: number; count: number; unit: string; devices: string[] }> = {};
       for (const [type, info] of Object.entries(aggregated)) {
         const vals = info.values;
         summary[type] = {
-          avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
+          avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100,
           min: Math.min(...vals),
           max: Math.max(...vals),
           count: vals.length,
           unit: info.unit,
+          devices: Array.from(info.devices),
         };
       }
 
-      const prompt = `You are CLRK, analyzing device health data for the user.
+      const prompt = `You are CLRK, analyzing data from connected Bluetooth devices. These can be ANY type of device — fitness trackers, environmental sensors, smart home devices, cycling computers, speakers, industrial sensors, etc.
 
-CURRENT READINGS (just received):
+CURRENT READINGS:
 ${readings.map((r: { dataType: string; value: number; unit: string; deviceName?: string }) =>
   `- ${r.dataType}: ${r.value} ${r.unit} (from ${r.deviceName || 'unknown device'})`
 ).join('\n')}
 
-24-HOUR SUMMARY:
+24-HOUR DATA SUMMARY:
 ${Object.entries(summary).map(([type, s]) =>
-  `- ${type}: avg=${s.avg} ${s.unit}, min=${s.min}, max=${s.max}, readings=${s.count}`
+  `- ${type}: avg=${s.avg} ${s.unit}, min=${s.min}, max=${s.max}, readings=${s.count}, devices=[${s.devices.join(', ')}]`
 ).join('\n')}
 
-ACTIVE HEALTH GOALS:
-${healthGoals?.map(g => `- [${g.id}] "${g.title}" (progress: ${g.progress}%) — ${g.description || 'no description'}`).join('\n') || 'None'}
+USER'S ACTIVE GOALS (all domains):
+${goals?.map(g => `- [${g.id}] "${g.title}" (${g.domain}, progress: ${g.progress}%) — ${g.description || 'no description'}`).join('\n') || 'None'}
 
-TASK: Analyze the data and respond with ONLY a JSON object (no markdown, no code fences):
+TASK: Analyze the device data holistically and respond with ONLY valid JSON (no markdown):
 {
-  "insight": "Brief health insight based on the data (1-2 sentences)",
-  "alerts": ["any concerning patterns"],
-  "goalUpdates": [{"goalId": "...", "suggestedProgress": N, "reason": "..."}]
+  "insight": "Brief insight about what the data tells us (1-2 sentences). Cover any device type — health, environment, fitness, smart home, etc.",
+  "alerts": ["any concerning or noteworthy patterns across any device type"],
+  "goalUpdates": [{"goalId": "...", "suggestedProgress": N, "reason": "..."}],
+  "deviceInsights": [{"device": "device name", "status": "healthy|warning|critical|nominal", "note": "brief note"}]
 }
 
-Only suggest goal progress updates if the data clearly supports it. Be conservative.`;
+Only suggest goal updates if the data clearly supports it. Be conservative. Treat all device types as equally important.`;
 
       try {
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -115,7 +114,7 @@ Only suggest goal progress updates if the data clearly supports it. Be conservat
           body: JSON.stringify({
             model: "google/gemini-3-flash-preview",
             messages: [
-              { role: "system", content: "You are a health data analyst. Respond ONLY with valid JSON." },
+              { role: "system", content: "You are a universal device data analyst. Respond ONLY with valid JSON." },
               { role: "user", content: prompt },
             ],
           }),
@@ -124,29 +123,23 @@ Only suggest goal progress updates if the data clearly supports it. Be conservat
         if (aiResp.ok) {
           const aiData = await aiResp.json();
           const content = aiData.choices?.[0]?.message?.content || "";
-          // Strip any markdown code fences
           const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
           try {
             analysis = JSON.parse(cleaned);
 
-            // Apply goal updates if suggested
             if (analysis.goalUpdates && Array.isArray(analysis.goalUpdates)) {
               for (const update of analysis.goalUpdates) {
                 if (update.goalId && typeof update.suggestedProgress === "number") {
-                  const goal = healthGoals?.find(g => g.id === update.goalId);
+                  const goal = goals?.find(g => g.id === update.goalId);
                   if (goal && update.suggestedProgress > goal.progress && update.suggestedProgress <= 100) {
-                    await sb
-                      .from("user_goals")
-                      .update({ progress: update.suggestedProgress })
-                      .eq("id", update.goalId)
-                      .eq("user_id", userId);
+                    await sb.from("user_goals").update({ progress: update.suggestedProgress }).eq("id", update.goalId).eq("user_id", userId);
                     goalUpdates.push({ goalId: update.goalId, newProgress: update.suggestedProgress });
                   }
                 }
               }
             }
           } catch {
-            analysis = { insight: content, alerts: [], goalUpdates: [] };
+            analysis = { insight: content, alerts: [], goalUpdates: [], deviceInsights: [] };
           }
         }
       } catch (e) {
@@ -154,26 +147,16 @@ Only suggest goal progress updates if the data clearly supports it. Be conservat
       }
     }
 
-    // 5. Mark readings as processed
-    const ids = readings.map((_: unknown, i: number) => rows[i]);
-    await sb
-      .from("device_data_logs")
-      .update({ processed: true })
-      .eq("user_id", userId)
-      .eq("processed", false);
+    // 5. Mark as processed
+    await sb.from("device_data_logs").update({ processed: true }).eq("user_id", userId).eq("processed", false);
 
-    return new Response(JSON.stringify({
-      stored: readings.length,
-      analysis,
-      goalUpdates,
-    }), {
+    return new Response(JSON.stringify({ stored: readings.length, analysis, goalUpdates }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("Process device data error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
