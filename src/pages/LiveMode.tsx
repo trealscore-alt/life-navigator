@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Camera, CameraOff, Mic, MicOff, Volume2, VolumeX,
-  Eye, Radio, Loader2, Glasses,
+  Eye, Radio, Loader2, Glasses, Play,
 } from 'lucide-react';
+import LiveDemoSimulation from '@/components/LiveDemoSimulation';
 
 interface TranscriptEntry {
   id: string;
