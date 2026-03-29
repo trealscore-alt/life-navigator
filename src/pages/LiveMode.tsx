@@ -491,6 +491,7 @@ const LiveMode = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
