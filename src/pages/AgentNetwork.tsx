@@ -68,6 +68,7 @@ const AgentNetwork = () => {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [newAgent, setNewAgent] = useState({ name: '', description: '', endpoint: '', trustLevel: 'limited' });
+  const [demoRunning, setDemoRunning] = useState(false);
 
   const apiCall = async (payload: Record<string, unknown>) => {
     const resp = await fetch(GATEWAY_URL, {
