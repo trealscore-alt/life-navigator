@@ -51,10 +51,10 @@ interface LiveDemoSimulationProps {
 const LiveDemoSimulation = ({ onClose }: LiveDemoSimulationProps) => {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [entries, setEntries] = useState<SimEntry[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indexRef = useRef(0);
 
   const script = scenario === 'meeting' ? MEETING_SCRIPT : NEWSFEED_SCRIPT;
 
@@ -67,42 +67,36 @@ const LiveDemoSimulation = ({ onClose }: LiveDemoSimulationProps) => {
   }, []);
 
   const playNext = useCallback(() => {
-    if (currentIndex >= script.length) {
+    const idx = indexRef.current;
+    if (idx >= script.length) {
       setIsRunning(false);
       return;
     }
-    const entry = script[currentIndex];
+    const entry = script[idx];
     const newEntry: SimEntry = {
       ...entry,
       id: crypto.randomUUID(),
       timestamp: new Date(),
     };
     setEntries(prev => [...prev, newEntry]);
-    setCurrentIndex(prev => prev + 1);
+    indexRef.current = idx + 1;
 
     const delay = entry.type === 'clrk-action' ? 4000 : entry.type.startsWith('clrk') ? 3000 : 2000;
-    timerRef.current = setTimeout(() => playNext(), delay);
-  }, [currentIndex, script]);
+    timerRef.current = setTimeout(playNext, delay);
+  }, [script]);
 
   const startDemo = (s: Scenario) => {
     setScenario(s);
     setEntries([]);
-    setCurrentIndex(0);
+    indexRef.current = 0;
     setIsRunning(true);
   };
 
   useEffect(() => {
-    if (isRunning && currentIndex === 0 && scenario) {
-      timerRef.current = setTimeout(() => playNext(), 1000);
+    if (isRunning && indexRef.current === 0 && scenario) {
+      timerRef.current = setTimeout(playNext, 1000);
     }
-  }, [isRunning, currentIndex, scenario]);
-
-  // Continue playing after state updates
-  useEffect(() => {
-    if (isRunning && currentIndex > 0 && currentIndex < script.length) {
-      // playNext already schedules the next one
-    }
-  }, [currentIndex]);
+  }, [isRunning, scenario, playNext]);
 
   const getIcon = (icon?: string) => {
     switch (icon) {
@@ -199,7 +193,7 @@ const LiveDemoSimulation = ({ onClose }: LiveDemoSimulationProps) => {
           {!isRunning && entries.length > 0 && (
             <span className="text-[10px] font-mono text-muted-foreground">SIMULATION COMPLETE</span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => { setScenario(null); setEntries([]); setCurrentIndex(0); if (timerRef.current) clearTimeout(timerRef.current); }} className="text-xs h-7">
+          <Button variant="ghost" size="sm" onClick={() => { setScenario(null); setEntries([]); indexRef.current = 0; if (timerRef.current) clearTimeout(timerRef.current); }} className="text-xs h-7">
             ← Scenarios
           </Button>
         </div>
