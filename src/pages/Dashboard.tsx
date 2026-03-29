@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   MessageSquare, Target, Plus, LogOut, Zap, TrendingUp,
-  Heart, Brain, DollarSign, Briefcase, Activity, Settings, Radio,
+  Heart, Brain, DollarSign, Briefcase, Activity, Settings, Radio, Bluetooth,
 } from 'lucide-react';
 
 const DOMAIN_ICONS: Record<string, any> = {
@@ -189,6 +189,11 @@ const Dashboard = () => {
             <Link to="/agents" className="block">
               <Button variant="outline" className="w-full justify-start font-mono text-xs">
                 <Radio className="w-4 h-4 mr-2" /> Agent Network
+              </Button>
+            </Link>
+            <Link to="/devices" className="block">
+              <Button variant="outline" className="w-full justify-start font-mono text-xs">
+                <Bluetooth className="w-4 h-4 mr-2" /> Device Hub
               </Button>
             </Link>
             <Link to="/settings" className="block">
