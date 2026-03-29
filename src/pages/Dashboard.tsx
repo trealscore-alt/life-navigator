@@ -48,16 +48,16 @@ const Dashboard = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [briefing, setBriefing] = useState<string | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const load = async () => {
-      const [profileRes, goalsRes, domainsRes, briefingRes] = await Promise.all([
+      const [profileRes, goalsRes, domainsRes] = await Promise.all([
         supabase.from('profiles').select('display_name, onboarding_completed').eq('user_id', user.id).single(),
         supabase.from('user_goals').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }),
         supabase.from('user_domains').select('*').eq('user_id', user.id).eq('is_active', true).order('priority'),
-        supabase.from('daily_briefings').select('content').eq('user_id', user.id).eq('briefing_date', new Date().toISOString().split('T')[0]).single(),
       ]);
 
       if (profileRes.data) {
@@ -69,7 +69,29 @@ const Dashboard = () => {
       }
       if (goalsRes.data) setGoals(goalsRes.data as Goal[]);
       if (domainsRes.data) setDomains(domainsRes.data as Domain[]);
-      if (briefingRes.data) setBriefing(briefingRes.data.content);
+
+      // Auto-generate briefing
+      setBriefingLoading(true);
+      try {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-briefing`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ userId: user.id }),
+          }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.briefing) setBriefing(data.briefing);
+        }
+      } catch (err) {
+        console.error('Briefing error:', err);
+      }
+      setBriefingLoading(false);
     };
 
     load();
@@ -131,9 +153,16 @@ const Dashboard = () => {
                 {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
-            <p className="text-foreground/80 text-sm leading-relaxed">
-              {briefing || `Welcome back. You have ${goals.length} active goal${goals.length !== 1 ? 's' : ''} across ${domains.length} domain${domains.length !== 1 ? 's' : ''}. Talk to CLRK for a personalized briefing.`}
-            </p>
+            {briefingLoading ? (
+              <div className="flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-muted-foreground text-sm font-mono">Generating your daily briefing...</p>
+              </div>
+            ) : (
+              <p className="text-foreground/80 text-sm leading-relaxed whitespace-pre-line">
+                {briefing || `Welcome back. You have ${goals.length} active goal${goals.length !== 1 ? 's' : ''} across ${domains.length} domain${domains.length !== 1 ? 's' : ''}. Talk to CLRK for a personalized briefing.`}
+              </p>
+            )}
             <Link to="/chat">
               <Button className="mt-4 font-mono text-xs bg-primary text-primary-foreground">
                 <MessageSquare className="w-4 h-4 mr-2" /> Talk to CLRK
