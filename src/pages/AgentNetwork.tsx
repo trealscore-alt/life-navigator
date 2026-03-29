@@ -155,6 +155,20 @@ const AgentNetwork = () => {
     }
   };
 
+  const runDemo = async () => {
+    if (!user || demoRunning) return;
+    setDemoRunning(true);
+    toast({ title: 'A2A Demo Initiated', description: 'CLRK is receiving messages from 3 external agents...' });
+    try {
+      await apiCall({ action: 'simulate' });
+      toast({ title: 'Demo Complete', description: 'CLRK processed messages from CTO, Cousin, and Coworker agents.' });
+      await loadData();
+    } catch (err: any) {
+      toast({ title: 'Demo error', description: err.message, variant: 'destructive' });
+    }
+    setDemoRunning(false);
+  };
+
   const pendingCount = messages.filter(m => m.status === 'pending').length;
   const filteredMessages = selectedAgent
     ? messages.filter(m => m.agent_id === selectedAgent)
