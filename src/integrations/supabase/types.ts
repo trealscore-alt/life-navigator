@@ -192,6 +192,45 @@ export type Database = {
         }
         Relationships: []
       }
+      device_data_logs: {
+        Row: {
+          created_at: string
+          data_type: string
+          device_id: string
+          device_name: string | null
+          id: string
+          metadata: Json | null
+          processed: boolean | null
+          unit: string
+          user_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          data_type: string
+          device_id: string
+          device_name?: string | null
+          id?: string
+          metadata?: Json | null
+          processed?: boolean | null
+          unit: string
+          user_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          data_type?: string
+          device_id?: string
+          device_name?: string | null
+          id?: string
+          metadata?: Json | null
+          processed?: boolean | null
+          unit?: string
+          user_id?: string
+          value?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           automation_comfort: string | null
