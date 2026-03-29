@@ -14,10 +14,36 @@ function buildSystemPrompt(userContext: Record<string, unknown>) {
   const riskTolerance = userContext.riskTolerance || "moderate";
   const challenges = (userContext.challenges as string[])?.join(", ") || "Not specified";
   const priorities = (userContext.priorities as string[])?.join(", ") || "Not specified";
-  const goals = userContext.goals as Array<{ title: string; domain: string; progress: number }> || [];
+  const personalityType = userContext.personalityType || "Not assessed";
+  const automationComfort = userContext.automationComfort || "advisory";
+  const timeDrains = (userContext.timeDrains as string[])?.join(", ") || "Not identified";
+
+  const goals = userContext.goals as Array<{ title: string; domain: string; progress: number; description: string; target_date: string; timeframe: string }> || [];
+  const allGoals = userContext.allGoals as Array<{ title: string; domain: string; progress: number; status: string; description: string; target_date: string }> || [];
   const goalsStr = goals.length > 0
-    ? goals.map((g) => g.title + " (" + g.domain + ", " + g.progress + "%)").join("; ")
+    ? goals.map((g) => `${g.title} [${g.domain}] — ${g.progress}% complete${g.description ? `, Description: ${g.description}` : ""}${g.target_date ? `, Deadline: ${g.target_date}` : ""}${g.timeframe ? `, Timeframe: ${g.timeframe}` : ""}`).join("\n    - ")
     : "None set";
+
+  const completedGoals = allGoals.filter((g) => g.status === "completed");
+  const pausedGoals = allGoals.filter((g) => g.status === "paused");
+  const goalsHistory = completedGoals.length > 0 || pausedGoals.length > 0
+    ? `\n- Completed Goals: ${completedGoals.length > 0 ? completedGoals.map((g) => g.title).join(", ") : "None"}\n- Paused Goals: ${pausedGoals.length > 0 ? pausedGoals.map((g) => `${g.title} (${g.progress}%)`).join(", ") : "None"}`
+    : "";
+
+  const domainPriorities = userContext.domainPriorities as Array<{ domain: string; priority: number }> || [];
+  const domainStr = domainPriorities.length > 0
+    ? domainPriorities.sort((a, b) => (b.priority || 0) - (a.priority || 0)).map((d) => `${d.domain} (priority: ${d.priority})`).join(", ")
+    : domains;
+
+  const lastBriefing = userContext.lastBriefing as { content: string; briefing_date: string } | null;
+  const briefingStr = lastBriefing
+    ? `\n- Last Daily Briefing (${lastBriefing.briefing_date}): ${lastBriefing.content.slice(0, 500)}${lastBriefing.content.length > 500 ? "..." : ""}`
+    : "";
+
+  const recentDeviceData = userContext.recentDeviceData as Array<{ device_name: string; data_type: string; value: number; unit: string; created_at: string }> || [];
+  const deviceStr = recentDeviceData.length > 0
+    ? `\n- Recent Device Readings:\n    - ` + recentDeviceData.slice(0, 20).map((d) => `${d.device_name || "Unknown device"}: ${d.data_type} = ${d.value} ${d.unit} (${d.created_at})`).join("\n    - ")
+    : "";
 
   return `You are CLRK (Cognitive Life Resource Kernel) — a Super Agent built to act as the user's unified life operating system.
 
@@ -158,10 +184,13 @@ serve(async (req) => {
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const sb = createClient(supabaseUrl, supabaseKey);
 
-      const [profileRes, goalsRes, domainsRes] = await Promise.all([
+      const [profileRes, goalsRes, domainsRes, briefingRes, deviceRes, allGoalsRes] = await Promise.all([
         sb.from("profiles").select("*").eq("user_id", userId).single(),
-        sb.from("user_goals").select("title, domain, progress").eq("user_id", userId).eq("status", "active"),
-        sb.from("user_domains").select("domain").eq("user_id", userId).eq("is_active", true),
+        sb.from("user_goals").select("*").eq("user_id", userId).eq("status", "active"),
+        sb.from("user_domains").select("domain, priority").eq("user_id", userId).eq("is_active", true),
+        sb.from("daily_briefings").select("content, briefing_date").eq("user_id", userId).order("briefing_date", { ascending: false }).limit(1),
+        sb.from("device_data_logs").select("device_name, data_type, value, unit, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
+        sb.from("user_goals").select("*").eq("user_id", userId),
       ]);
 
       if (profileRes.data) {
@@ -173,8 +202,15 @@ serve(async (req) => {
           riskTolerance: p.risk_tolerance,
           challenges: p.current_challenges,
           priorities: p.top_priorities,
+          personalityType: p.personality_type,
+          automationComfort: p.automation_comfort,
+          timeDrains: p.time_drains,
           goals: goalsRes.data || [],
+          allGoals: allGoalsRes.data || [],
           domains: (domainsRes.data || []).map((d: { domain: string }) => d.domain),
+          domainPriorities: domainsRes.data || [],
+          lastBriefing: briefingRes.data?.[0] || null,
+          recentDeviceData: deviceRes.data || [],
         };
       }
     }
