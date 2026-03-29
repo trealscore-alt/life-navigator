@@ -48,16 +48,16 @@ const Dashboard = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [briefing, setBriefing] = useState<string | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const load = async () => {
-      const [profileRes, goalsRes, domainsRes, briefingRes] = await Promise.all([
+      const [profileRes, goalsRes, domainsRes] = await Promise.all([
         supabase.from('profiles').select('display_name, onboarding_completed').eq('user_id', user.id).single(),
         supabase.from('user_goals').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }),
         supabase.from('user_domains').select('*').eq('user_id', user.id).eq('is_active', true).order('priority'),
-        supabase.from('daily_briefings').select('content').eq('user_id', user.id).eq('briefing_date', new Date().toISOString().split('T')[0]).single(),
       ]);
 
       if (profileRes.data) {
@@ -69,7 +69,29 @@ const Dashboard = () => {
       }
       if (goalsRes.data) setGoals(goalsRes.data as Goal[]);
       if (domainsRes.data) setDomains(domainsRes.data as Domain[]);
-      if (briefingRes.data) setBriefing(briefingRes.data.content);
+
+      // Auto-generate briefing
+      setBriefingLoading(true);
+      try {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-briefing`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ userId: user.id }),
+          }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.briefing) setBriefing(data.briefing);
+        }
+      } catch (err) {
+        console.error('Briefing error:', err);
+      }
+      setBriefingLoading(false);
     };
 
     load();
