@@ -14,10 +14,36 @@ function buildSystemPrompt(userContext: Record<string, unknown>) {
   const riskTolerance = userContext.riskTolerance || "moderate";
   const challenges = (userContext.challenges as string[])?.join(", ") || "Not specified";
   const priorities = (userContext.priorities as string[])?.join(", ") || "Not specified";
-  const goals = userContext.goals as Array<{ title: string; domain: string; progress: number }> || [];
+  const personalityType = userContext.personalityType || "Not assessed";
+  const automationComfort = userContext.automationComfort || "advisory";
+  const timeDrains = (userContext.timeDrains as string[])?.join(", ") || "Not identified";
+
+  const goals = userContext.goals as Array<{ title: string; domain: string; progress: number; description: string; target_date: string; timeframe: string }> || [];
+  const allGoals = userContext.allGoals as Array<{ title: string; domain: string; progress: number; status: string; description: string; target_date: string }> || [];
   const goalsStr = goals.length > 0
-    ? goals.map((g) => g.title + " (" + g.domain + ", " + g.progress + "%)").join("; ")
+    ? goals.map((g) => `${g.title} [${g.domain}] — ${g.progress}% complete${g.description ? `, Description: ${g.description}` : ""}${g.target_date ? `, Deadline: ${g.target_date}` : ""}${g.timeframe ? `, Timeframe: ${g.timeframe}` : ""}`).join("\n    - ")
     : "None set";
+
+  const completedGoals = allGoals.filter((g) => g.status === "completed");
+  const pausedGoals = allGoals.filter((g) => g.status === "paused");
+  const goalsHistory = completedGoals.length > 0 || pausedGoals.length > 0
+    ? `\n- Completed Goals: ${completedGoals.length > 0 ? completedGoals.map((g) => g.title).join(", ") : "None"}\n- Paused Goals: ${pausedGoals.length > 0 ? pausedGoals.map((g) => `${g.title} (${g.progress}%)`).join(", ") : "None"}`
+    : "";
+
+  const domainPriorities = userContext.domainPriorities as Array<{ domain: string; priority: number }> || [];
+  const domainStr = domainPriorities.length > 0
+    ? domainPriorities.sort((a, b) => (b.priority || 0) - (a.priority || 0)).map((d) => `${d.domain} (priority: ${d.priority})`).join(", ")
+    : domains;
+
+  const lastBriefing = userContext.lastBriefing as { content: string; briefing_date: string } | null;
+  const briefingStr = lastBriefing
+    ? `\n- Last Daily Briefing (${lastBriefing.briefing_date}): ${lastBriefing.content.slice(0, 500)}${lastBriefing.content.length > 500 ? "..." : ""}`
+    : "";
+
+  const recentDeviceData = userContext.recentDeviceData as Array<{ device_name: string; data_type: string; value: number; unit: string; created_at: string }> || [];
+  const deviceStr = recentDeviceData.length > 0
+    ? `\n- Recent Device Readings:\n    - ` + recentDeviceData.slice(0, 20).map((d) => `${d.device_name || "Unknown device"}: ${d.data_type} = ${d.value} ${d.unit} (${d.created_at})`).join("\n    - ")
+    : "";
 
   return `You are CLRK (Cognitive Life Resource Kernel) — a Super Agent built to act as the user's unified life operating system.
 
@@ -27,15 +53,29 @@ You think like a combination of: chief of staff, strategist, operations lead, we
 
 You are NOT a chatbot. You are NOT passive. You are NOT shallow. You are NOT generic. You are an integrated intelligence layer — a personal intelligence infrastructure.
 
-## USER CONTEXT
+## USER CONTEXT — KNOWN FACTS (use these, NEVER assume or fabricate)
 - Name: ${displayName}
 - Life Roles: ${roles}
-- Active Domains: ${domains}
+- Active Domains (by priority): ${domainStr}
 - Communication Preference: ${communicationStyle}
 - Risk Tolerance: ${riskTolerance}
+- Personality Type: ${personalityType}
+- Automation Comfort: ${automationComfort}
 - Current Challenges: ${challenges}
 - Top Priorities: ${priorities}
-- Active Goals: ${goalsStr}
+- Time Drains: ${timeDrains}
+- Active Goals:
+    - ${goalsStr}${goalsHistory}${briefingStr}${deviceStr}
+
+## DATA INTEGRITY RULE (ABSOLUTE — NEVER VIOLATE)
+You must ONLY reference data you actually have from the user's profile, goals, device readings, and conversation history above.
+- NEVER invent, assume, estimate, or fabricate numbers, dates, amounts, percentages, account balances, income figures, health metrics, or any personal data.
+- If you lack specific data (e.g., the user's salary, savings, debt, heart rate, weight, schedule), SAY SO explicitly: "I don't have your [X] data yet. Share it with me and I'll factor it in."
+- If the user mentions a figure in conversation, you may use it for that session — but flag that it's user-reported, not system-verified.
+- When giving financial, health, or strategic advice, clearly distinguish between: KNOWN DATA (from the system) vs. USER-REPORTED (from this conversation) vs. UNKNOWN (ask for it).
+- Never pad responses with made-up examples using fake numbers. Use the user's REAL data or ask for it.
+- This rule applies to ALL domains: finance, health, career, relationships, devices, goals — everything.
+- When you need data to give precise advice, PROACTIVELY ASK for it. List exactly what data points you need.
 
 ## PRIMARY OBJECTIVE
 Understand the user deeply and support them so effectively that you become the central intelligence layer for their life. Help them think, decide, plan, execute, communicate, earn, manage, grow, protect, and live better.
@@ -158,10 +198,13 @@ serve(async (req) => {
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const sb = createClient(supabaseUrl, supabaseKey);
 
-      const [profileRes, goalsRes, domainsRes] = await Promise.all([
+      const [profileRes, goalsRes, domainsRes, briefingRes, deviceRes, allGoalsRes] = await Promise.all([
         sb.from("profiles").select("*").eq("user_id", userId).single(),
-        sb.from("user_goals").select("title, domain, progress").eq("user_id", userId).eq("status", "active"),
-        sb.from("user_domains").select("domain").eq("user_id", userId).eq("is_active", true),
+        sb.from("user_goals").select("*").eq("user_id", userId).eq("status", "active"),
+        sb.from("user_domains").select("domain, priority").eq("user_id", userId).eq("is_active", true),
+        sb.from("daily_briefings").select("content, briefing_date").eq("user_id", userId).order("briefing_date", { ascending: false }).limit(1),
+        sb.from("device_data_logs").select("device_name, data_type, value, unit, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
+        sb.from("user_goals").select("*").eq("user_id", userId),
       ]);
 
       if (profileRes.data) {
@@ -173,8 +216,15 @@ serve(async (req) => {
           riskTolerance: p.risk_tolerance,
           challenges: p.current_challenges,
           priorities: p.top_priorities,
+          personalityType: p.personality_type,
+          automationComfort: p.automation_comfort,
+          timeDrains: p.time_drains,
           goals: goalsRes.data || [],
+          allGoals: allGoalsRes.data || [],
           domains: (domainsRes.data || []).map((d: { domain: string }) => d.domain),
+          domainPriorities: domainsRes.data || [],
+          lastBriefing: briefingRes.data?.[0] || null,
+          recentDeviceData: deviceRes.data || [],
         };
       }
     }
