@@ -36,7 +36,7 @@ const LiveMode = () => {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentSpeech, setCurrentSpeech] = useState('');
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
-
+  const [showDemo, setShowDemo] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -278,6 +278,9 @@ const LiveMode = () => {
       </header>
 
       {/* Main content */}
+      {showDemo ? (
+        <LiveDemoSimulation onClose={() => setShowDemo(false)} />
+      ) : (
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Camera feed */}
         <div className="relative lg:w-1/2 bg-black flex items-center justify-center min-h-[300px]">
