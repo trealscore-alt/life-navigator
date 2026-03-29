@@ -22,6 +22,7 @@ interface TranscriptEntry {
 
 const LiveMode = () => {
   const { user } = useAuth();
+  const { parseCommand } = useVoiceCommands();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
