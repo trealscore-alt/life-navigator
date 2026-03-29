@@ -1,22 +1,53 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import BiometricLock from '@/components/BiometricLock';
 
 const Auth = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, signIn, signUp } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [biometricUnlocked, setBiometricUnlocked] = useState(false);
+  const [userName, setUserName] = useState<string>('');
   const { toast } = useToast();
-  const { signIn, signUp } = useAuth();
+
+  // Check if returning user with existing session
+  useEffect(() => {
+    if (user) {
+      supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.display_name) setUserName(data.display_name);
+        });
+    }
+  }, [user]);
 
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to="/dashboard" replace />;
+
+  // Returning user: show biometric lock
+  if (user && !biometricUnlocked) {
+    return (
+      <BiometricLock
+        onUnlock={() => setBiometricUnlocked(true)}
+        userName={userName}
+      />
+    );
+  }
+
+  // Unlocked: go to dashboard
+  if (user && biometricUnlocked) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +68,12 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-      {/* Background grid */}
       <div className="absolute inset-0 grid-bg opacity-30" />
       <div className="absolute inset-0 scanline-overlay opacity-20" />
-
-      {/* Radial glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-20"
-        style={{ background: 'radial-gradient(circle, hsl(185 100% 50% / 0.15), transparent 70%)' }} />
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-20"
+        style={{ background: 'radial-gradient(circle, hsl(185 100% 50% / 0.15), transparent 70%)' }}
+      />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -51,7 +81,6 @@ const Auth = () => {
         transition={{ duration: 0.8 }}
         className="relative z-10 w-full max-w-md px-6"
       >
-        {/* Logo */}
         <div className="text-center mb-10">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
@@ -69,7 +98,6 @@ const Auth = () => {
           </p>
         </div>
 
-        {/* Auth Form */}
         <div className="glass-card neon-border rounded-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -114,7 +142,6 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Status bar */}
         <div className="mt-8 flex items-center justify-center gap-2 text-xs font-mono text-muted-foreground">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse-glow" />
           <span>SYSTEM ONLINE</span>
