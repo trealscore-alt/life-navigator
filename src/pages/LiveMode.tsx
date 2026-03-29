@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Camera, CameraOff, Mic, MicOff, Volume2, VolumeX,
-  Eye, Radio, Loader2, Glasses,
+  Eye, Radio, Loader2, Glasses, Play,
 } from 'lucide-react';
+import LiveDemoSimulation from '@/components/LiveDemoSimulation';
 
 interface TranscriptEntry {
   id: string;
@@ -35,7 +36,7 @@ const LiveMode = () => {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentSpeech, setCurrentSpeech] = useState('');
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
-
+  const [showDemo, setShowDemo] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -269,6 +270,11 @@ const LiveMode = () => {
         <div className="flex items-center gap-2">
           <Glasses className="w-5 h-5 text-primary" />
           <span className="font-mono text-sm neon-text">LIVE MODE</span>
+          {!showDemo && (
+            <Button variant="ghost" size="sm" onClick={() => setShowDemo(true)} className="text-xs h-6 px-2 text-primary/60 hover:text-primary">
+              <Play className="w-3 h-3 mr-1" /> DEMO
+            </Button>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <div className={`w-2 h-2 rounded-full ${statusColor} animate-pulse`} />
@@ -277,6 +283,9 @@ const LiveMode = () => {
       </header>
 
       {/* Main content */}
+      {showDemo ? (
+        <LiveDemoSimulation onClose={() => setShowDemo(false)} />
+      ) : (
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Camera feed */}
         <div className="relative lg:w-1/2 bg-black flex items-center justify-center min-h-[300px]">
@@ -487,6 +496,7 @@ const LiveMode = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
