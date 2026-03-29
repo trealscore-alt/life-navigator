@@ -197,12 +197,31 @@ const AgentNetwork = () => {
             </div>
           </div>
 
-          <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-            <DialogTrigger asChild>
-              <Button className="font-mono text-xs bg-primary text-primary-foreground">
-                <Plus className="w-4 h-4 mr-2" /> Register Agent
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={runDemo}
+              disabled={demoRunning}
+              variant="outline"
+              className="font-mono text-xs border-primary/50 text-primary hover:bg-primary/10"
+            >
+              {demoRunning ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+                  Running Demo...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" /> Run A2A Demo
+                </>
+              )}
+            </Button>
+
+            <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
+              <DialogTrigger asChild>
+                <Button className="font-mono text-xs bg-primary text-primary-foreground">
+                  <Plus className="w-4 h-4 mr-2" /> Register Agent
+                </Button>
+              </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
                 <DialogTitle className="font-mono neon-text">Register External Agent</DialogTitle>
