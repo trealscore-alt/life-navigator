@@ -208,8 +208,8 @@ const LiveDemoSimulation = ({ onClose }: LiveDemoSimulationProps) => {
       {/* Simulated visual feed */}
       <div className="relative bg-black/80 border-b border-border/20 px-4 py-3 min-h-[60px]">
         <div className="absolute top-2 left-2 flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-[9px] font-mono text-red-400">REC</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+          <span className="text-[9px] font-mono text-destructive">REC</span>
         </div>
         <div className="absolute top-2 right-2 flex items-center gap-1.5">
           <Eye className="w-3 h-3 text-primary/60" />
