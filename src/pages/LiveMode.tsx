@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import LiveDemoSimulation from '@/components/LiveDemoSimulation';
 import { useWakeWord } from '@/hooks/useWakeWord';
+import { useVoiceCommands, DeviceCommand } from '@/hooks/useVoiceCommands';
 
 interface TranscriptEntry {
   id: string;
