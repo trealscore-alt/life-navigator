@@ -70,6 +70,8 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
       setScanProgress((step / steps) * 100);
       if (step >= steps) {
         clearInterval(timer);
+        playUnlockSound();
+        triggerHaptic();
         setUnlocked(true);
         setTimeout(onUnlock, 600);
       }
