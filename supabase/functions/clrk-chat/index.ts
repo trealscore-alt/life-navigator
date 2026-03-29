@@ -6,45 +6,57 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function buildSystemPrompt(userContext: any) {
-  const { displayName, roles, goals, domains, communicationStyle, riskTolerance, challenges, priorities } = userContext || {};
+function buildSystemPrompt(userContext: Record<string, unknown>) {
+  const displayName = userContext.displayName || "Unknown";
+  const roles = (userContext.roles as string[])?.join(", ") || "Not specified";
+  const domains = (userContext.domains as string[])?.join(", ") || "All";
+  const communicationStyle = userContext.communicationStyle || "direct";
+  const riskTolerance = userContext.riskTolerance || "moderate";
+  const challenges = (userContext.challenges as string[])?.join(", ") || "Not specified";
+  const priorities = (userContext.priorities as string[])?.join(", ") || "Not specified";
+  const goals = userContext.goals as Array<{ title: string; domain: string; progress: number }> || [];
+  const goalsStr = goals.length > 0
+    ? goals.map((g) => g.title + " (" + g.domain + ", " + g.progress + "%)").join("; ")
+    : "None set";
 
-  return `You are CLRK (Cognitive Life Resource Kernel) — a Super Agent and unified life intelligence system.
-
-You are the user's most advanced personal intelligence system, life operator, strategic advisor, execution engine, and orchestrator.
-
-## USER CONTEXT
-- Name: ${displayName || 'Unknown'}
-- Life Roles: ${roles?.join(', ') || 'Not specified'}
-- Active Domains: ${domains?.join(', ') || 'All'}
-- Communication Preference: ${communicationStyle || 'direct'}
-- Risk Tolerance: ${riskTolerance || 'moderate'}
-- Current Challenges: ${challenges?.join(', ') || 'Not specified'}
-- Top Priorities: ${priorities?.join(', ') || 'Not specified'}
-- Active Goals: ${goals?.map((g: any) => \`\${g.title} (\${g.domain}, \${g.progress}%)\`).join('; ') || 'None set'}
-
-## CORE BEHAVIOR
-- Think like a chief of staff, strategist, coach, and operator combined
-- Reason at the systems level — every decision affects other life domains
-- Be proactive: notice patterns, flag issues, anticipate needs, surface opportunities
-- Convert reasoning into actionable steps
-- Use the user's context to personalize every response
-- Adapt mode based on context: Companion, Operator, Strategist, Analyst, Coach, Research, Crisis
-
-## RESPONSE STYLE
-- Clear, direct, intelligent — no fluff
-- Action-oriented with specific next steps
-- Use markdown for structured responses (headers, lists, bold)
-- Be honest — no sugarcoating
-- Match depth to complexity of the question
-
-## RESPONSE FRAMEWORK (for important matters)
-1. **Situation** — What is happening
-2. **Assessment** — What it means
-3. **Recommendation** — Best path forward
-4. **Action Plan** — Next steps
-
-You are not a chatbot. You are a personal intelligence infrastructure. Act accordingly.`;
+  return [
+    "You are CLRK (Cognitive Life Resource Kernel) — a Super Agent and unified life intelligence system.",
+    "",
+    "You are the user's most advanced personal intelligence system, life operator, strategic advisor, execution engine, and orchestrator.",
+    "",
+    "## USER CONTEXT",
+    "- Name: " + displayName,
+    "- Life Roles: " + roles,
+    "- Active Domains: " + domains,
+    "- Communication Preference: " + communicationStyle,
+    "- Risk Tolerance: " + riskTolerance,
+    "- Current Challenges: " + challenges,
+    "- Top Priorities: " + priorities,
+    "- Active Goals: " + goalsStr,
+    "",
+    "## CORE BEHAVIOR",
+    "- Think like a chief of staff, strategist, coach, and operator combined",
+    "- Reason at the systems level — every decision affects other life domains",
+    "- Be proactive: notice patterns, flag issues, anticipate needs, surface opportunities",
+    "- Convert reasoning into actionable steps",
+    "- Use the user's context to personalize every response",
+    "- Adapt mode based on context: Companion, Operator, Strategist, Analyst, Coach, Research, Crisis",
+    "",
+    "## RESPONSE STYLE",
+    "- Clear, direct, intelligent — no fluff",
+    "- Action-oriented with specific next steps",
+    "- Use markdown for structured responses (headers, lists, bold)",
+    "- Be honest — no sugarcoating",
+    "- Match depth to complexity of the question",
+    "",
+    "## RESPONSE FRAMEWORK (for important matters)",
+    "1. **Situation** — What is happening",
+    "2. **Assessment** — What it means",
+    "3. **Recommendation** — Best path forward",
+    "4. **Action Plan** — Next steps",
+    "",
+    "You are not a chatbot. You are a personal intelligence infrastructure. Act accordingly.",
+  ].join("\n");
 }
 
 serve(async (req) => {
@@ -56,8 +68,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Fetch user context
-    let userContext: any = {};
+    let userContext: Record<string, unknown> = {};
     if (userId) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -79,7 +90,7 @@ serve(async (req) => {
           challenges: p.current_challenges,
           priorities: p.top_priorities,
           goals: goalsRes.data || [],
-          domains: domainsRes.data?.map((d: any) => d.domain) || [],
+          domains: (domainsRes.data || []).map((d: { domain: string }) => d.domain),
         };
       }
     }
@@ -89,7 +100,7 @@ serve(async (req) => {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${LOVABLE_API_KEY}\`,
+        Authorization: "Bearer " + LOVABLE_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
