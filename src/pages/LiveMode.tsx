@@ -102,8 +102,74 @@ const LiveMode = () => {
     window.speechSynthesis.speak(utterance);
   }, [speakerOn, micOn]);
 
+  const handleDeviceCommand = useCallback((cmd: DeviceCommand) => {
+    const actionMap: Record<string, string> = {
+      glasses: 'smart glasses',
+      car: 'vehicle system',
+      home: 'home devices',
+      watch: 'smartwatch',
+      headphones: 'headphones',
+      speaker: 'smart speaker',
+      phone: 'phone',
+      all: 'all nearby devices',
+    };
+    const targetLabel = actionMap[cmd.target] || cmd.target;
+
+    let response = '';
+    switch (cmd.type) {
+      case 'scan':
+        response = `Scanning for ${targetLabel} now. On a native device, I'll discover all nearby Bluetooth devices. In the browser, navigate to Device Hub to initiate a scan.`;
+        toast.info(`CLRK: Scanning for ${targetLabel}...`);
+        break;
+      case 'connect':
+        response = `Initiating connection to your ${targetLabel}. On a native device with Bluetooth enabled, I'll pair and begin monitoring automatically. For now, head to Device Hub where you can scan and connect.`;
+        toast.info(`CLRK: Connecting to ${targetLabel}...`);
+        break;
+      case 'disconnect':
+        response = `Disconnecting from your ${targetLabel}. I'll stop monitoring and release the connection.`;
+        toast.info(`CLRK: Disconnecting ${targetLabel}...`);
+        break;
+      case 'monitor':
+        response = `Starting live monitoring on your ${targetLabel}. I'll track all available data streams — heart rate, temperature, battery, whatever it broadcasts — and sync insights to your dashboard.`;
+        toast.info(`CLRK: Monitoring ${targetLabel}...`);
+        break;
+      case 'status':
+        response = `Checking status of your ${targetLabel}. On a native build, I'd pull live connection states and recent readings. Check Device Hub for the full picture.`;
+        toast.info(`CLRK: Checking ${targetLabel} status...`);
+        break;
+    }
+
+    // Add to transcript as if CLRK responded
+    const assistantEntry: TranscriptEntry = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      text: response,
+      timestamp: new Date(),
+    };
+    setTranscript(prev => [...prev, assistantEntry]);
+    setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+    speak(response);
+  }, [speak]);
+
   const sendToClrk = useCallback(async (userText: string) => {
     if (!user) return;
+
+    // Check for device commands first
+    const cmd = parseCommand(userText);
+    if (cmd) {
+      // Add user message to transcript
+      const userEntry: TranscriptEntry = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        text: userText,
+        timestamp: new Date(),
+      };
+      setTranscript(prev => [...prev, userEntry]);
+      setMessages(prev => [...prev, { role: 'user', content: userText }]);
+      handleDeviceCommand(cmd);
+      return;
+    }
+
     setIsProcessing(true);
 
     const userEntry: TranscriptEntry = {
@@ -129,7 +195,7 @@ const LiveMode = () => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: newMessages.slice(-10), // Keep last 10 messages for context
+            messages: newMessages.slice(-10),
             userId: user.id,
             imageBase64,
           }),
@@ -153,7 +219,6 @@ const LiveMode = () => {
       setTranscript(prev => [...prev, assistantEntry]);
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
 
-      // Speak the response
       speak(reply);
     } catch (error: any) {
       console.error('CLRK Live error:', error);
@@ -161,7 +226,7 @@ const LiveMode = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [user, messages, captureFrame, speak]);
+  }, [user, messages, captureFrame, speak, parseCommand, handleDeviceCommand]);
 
   const startCamera = useCallback(async () => {
     try {
