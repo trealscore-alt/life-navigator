@@ -10,6 +10,7 @@ import {
   Eye, Radio, Loader2, Glasses, Play,
 } from 'lucide-react';
 import LiveDemoSimulation from '@/components/LiveDemoSimulation';
+import { useWakeWord } from '@/hooks/useWakeWord';
 
 interface TranscriptEntry {
   id: string;
@@ -37,7 +38,17 @@ const LiveMode = () => {
   const [currentSpeech, setCurrentSpeech] = useState('');
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
   const [showDemo, setShowDemo] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  // Wake word detection — "Hey CLRK" activates Live Mode hands-free
+  const { isListening: isWakeListening } = useWakeWord({
+    onWake: () => {
+      toast.success('Wake word detected — activating CLRK Live');
+      startAll();
+    },
+    enabled: wakeWordEnabled && !isActive,
+  });
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -253,8 +264,8 @@ const LiveMode = () => {
     setIsSpeaking(false);
   }, [stopCamera, stopMic]);
 
-  const statusColor = isProcessing ? 'bg-yellow-500' : isSpeaking ? 'bg-primary' : isListening ? 'bg-green-500' : 'bg-muted';
-  const statusText = isProcessing ? 'Processing...' : isSpeaking ? 'CLRK Speaking' : isListening ? 'Listening...' : 'Standby';
+  const statusColor = isProcessing ? 'bg-yellow-500' : isSpeaking ? 'bg-primary' : isListening ? 'bg-green-500' : isWakeListening ? 'bg-cyan-500' : 'bg-muted';
+  const statusText = isProcessing ? 'Processing...' : isSpeaking ? 'CLRK Speaking' : isListening ? 'Listening...' : isWakeListening ? '"Hey CLRK" ready' : 'Standby';
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -401,13 +412,35 @@ const LiveMode = () => {
           {/* Controls */}
           <div className="p-4 border-t border-border/30 bg-background/80 backdrop-blur-sm">
             {!isActive ? (
-              <Button
-                onClick={startAll}
-                className="w-full h-14 text-lg font-mono bg-primary hover:bg-primary/80 text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.4)]"
-              >
-                <Eye className="w-5 h-5 mr-2" />
-                ACTIVATE LIVE MODE
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  onClick={startAll}
+                  className="w-full h-14 text-lg font-mono bg-primary hover:bg-primary/80 text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.4)]"
+                >
+                  <Eye className="w-5 h-5 mr-2" />
+                  ACTIVATE LIVE MODE
+                </Button>
+                {isWakeListening && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center gap-2 text-xs font-mono text-muted-foreground"
+                  >
+                    <motion.div
+                      className="w-2 h-2 rounded-full bg-cyan-500"
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                    Listening for "Hey CLRK"...
+                  </motion.div>
+                )}
+                <button
+                  onClick={() => setWakeWordEnabled(!wakeWordEnabled)}
+                  className="w-full text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors font-mono"
+                >
+                  {wakeWordEnabled ? 'Disable' : 'Enable'} wake word
+                </button>
+              </div>
             ) : (
               <div className="space-y-3">
                 {/* Listening indicator */}
