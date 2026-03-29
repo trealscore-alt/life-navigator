@@ -15,17 +15,18 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Build user context
+    // Build comprehensive user context
     let userContext: Record<string, unknown> = {};
     if (userId) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const sb = createClient(supabaseUrl, supabaseKey);
 
-      const [profileRes, goalsRes, domainsRes] = await Promise.all([
+      const [profileRes, goalsRes, domainsRes, deviceRes] = await Promise.all([
         sb.from("profiles").select("*").eq("user_id", userId).single(),
-        sb.from("user_goals").select("title, domain, progress").eq("user_id", userId).eq("status", "active"),
-        sb.from("user_domains").select("domain").eq("user_id", userId).eq("is_active", true),
+        sb.from("user_goals").select("*").eq("user_id", userId).eq("status", "active"),
+        sb.from("user_domains").select("domain, priority").eq("user_id", userId).eq("is_active", true),
+        sb.from("device_data_logs").select("device_name, data_type, value, unit, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
       ]);
 
       if (profileRes.data) {
@@ -37,19 +38,33 @@ serve(async (req) => {
           riskTolerance: p.risk_tolerance,
           challenges: p.current_challenges,
           priorities: p.top_priorities,
+          personalityType: p.personality_type,
+          automationComfort: p.automation_comfort,
+          timeDrains: p.time_drains,
           goals: goalsRes.data || [],
           domains: (domainsRes.data || []).map((d: { domain: string }) => d.domain),
+          domainPriorities: domainsRes.data || [],
+          recentDeviceData: deviceRes.data || [],
         };
       }
     }
 
     const displayName = userContext.displayName || "Unknown";
     const roles = (userContext.roles as string[])?.join(", ") || "Not specified";
-    const domains = (userContext.domains as string[])?.join(", ") || "All";
-    const goals = userContext.goals as Array<{ title: string; domain: string; progress: number }> || [];
+    const domainPriorities = userContext.domainPriorities as Array<{ domain: string; priority: number }> || [];
+    const domains = domainPriorities.length > 0
+      ? domainPriorities.sort((a, b) => (b.priority || 0) - (a.priority || 0)).map((d) => `${d.domain} (priority: ${d.priority})`).join(", ")
+      : (userContext.domains as string[])?.join(", ") || "All";
+    const challenges = (userContext.challenges as string[])?.join(", ") || "Not specified";
+    const priorities = (userContext.priorities as string[])?.join(", ") || "Not specified";
+    const goals = userContext.goals as Array<{ title: string; domain: string; progress: number; description: string; target_date: string }> || [];
     const goalsStr = goals.length > 0
-      ? goals.map((g) => g.title + " (" + g.domain + ", " + g.progress + "%)").join("; ")
+      ? goals.map((g) => `${g.title} [${g.domain}] — ${g.progress}% complete${g.target_date ? `, Deadline: ${g.target_date}` : ""}`).join("; ")
       : "None set";
+    const recentDeviceData = userContext.recentDeviceData as Array<{ device_name: string; data_type: string; value: number; unit: string; created_at: string }> || [];
+    const deviceStr = recentDeviceData.length > 0
+      ? `\n- Recent Device Readings: ` + recentDeviceData.slice(0, 10).map((d) => `${d.device_name || "device"}: ${d.data_type}=${d.value}${d.unit}`).join(", ")
+      : "";
 
     const systemPrompt = `You are CLRK (Cognitive Life Resource Kernel) operating in LIVE MODE through the user's smart glasses or camera device.
 
@@ -74,11 +89,16 @@ You can SEE what the user sees through their camera feed. You can HEAR what they
 - Read whiteboards, presentations, notes
 - Identify vehicles, real estate, assets
 
-## USER CONTEXT
+## USER CONTEXT — KNOWN FACTS (use these, NEVER assume or fabricate)
 - Name: ${displayName}
 - Roles: ${roles}
 - Active Domains: ${domains}
-- Active Goals: ${goalsStr}
+- Challenges: ${challenges}
+- Top Priorities: ${priorities}
+- Active Goals: ${goalsStr}${deviceStr}
+
+## DATA INTEGRITY RULE (ABSOLUTE)
+ONLY reference data you actually have above. NEVER invent numbers, balances, metrics, or personal data. If you lack data, say so briefly: "I don't have your [X] — tell me and I'll factor it in."
 
 ## COGNITIVE COUNCIL (apply relevant frameworks)
 Financial situations → Buffett, Munger, Dalio. Career/product → Jobs, Musk. Strategy → Sun Tzu, Altman. Risk → Dimon, Morgan.
@@ -95,12 +115,10 @@ Financial situations → Buffett, Munger, Dalio. Career/product → Jobs, Musk. 
       { role: "system", content: systemPrompt },
     ];
 
-    // Add conversation history
     for (const msg of messages) {
       apiMessages.push(msg);
     }
 
-    // If there's a current camera frame, attach it to the last user message
     if (imageBase64 && apiMessages.length > 1) {
       const lastMsg = apiMessages[apiMessages.length - 1];
       if (lastMsg.role === "user") {
