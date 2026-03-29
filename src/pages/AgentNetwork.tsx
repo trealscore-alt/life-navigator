@@ -68,6 +68,7 @@ const AgentNetwork = () => {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [newAgent, setNewAgent] = useState({ name: '', description: '', endpoint: '', trustLevel: 'limited' });
+  const [demoRunning, setDemoRunning] = useState(false);
 
   const apiCall = async (payload: Record<string, unknown>) => {
     const resp = await fetch(GATEWAY_URL, {
@@ -154,6 +155,20 @@ const AgentNetwork = () => {
     }
   };
 
+  const runDemo = async () => {
+    if (!user || demoRunning) return;
+    setDemoRunning(true);
+    toast({ title: 'A2A Demo Initiated', description: 'CLRK is receiving messages from 3 external agents...' });
+    try {
+      await apiCall({ action: 'simulate' });
+      toast({ title: 'Demo Complete', description: 'CLRK processed messages from CTO, Cousin, and Coworker agents.' });
+      await loadData();
+    } catch (err: any) {
+      toast({ title: 'Demo error', description: err.message, variant: 'destructive' });
+    }
+    setDemoRunning(false);
+  };
+
   const pendingCount = messages.filter(m => m.status === 'pending').length;
   const filteredMessages = selectedAgent
     ? messages.filter(m => m.agent_id === selectedAgent)
@@ -182,12 +197,31 @@ const AgentNetwork = () => {
             </div>
           </div>
 
-          <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-            <DialogTrigger asChild>
-              <Button className="font-mono text-xs bg-primary text-primary-foreground">
-                <Plus className="w-4 h-4 mr-2" /> Register Agent
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={runDemo}
+              disabled={demoRunning}
+              variant="outline"
+              className="font-mono text-xs border-primary/50 text-primary hover:bg-primary/10"
+            >
+              {demoRunning ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+                  Running Demo...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" /> Run A2A Demo
+                </>
+              )}
+            </Button>
+
+            <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
+              <DialogTrigger asChild>
+                <Button className="font-mono text-xs bg-primary text-primary-foreground">
+                  <Plus className="w-4 h-4 mr-2" /> Register Agent
+                </Button>
+              </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
                 <DialogTitle className="font-mono neon-text">Register External Agent</DialogTitle>
@@ -246,6 +280,7 @@ const AgentNetwork = () => {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </header>
 
