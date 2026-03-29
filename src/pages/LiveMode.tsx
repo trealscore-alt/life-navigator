@@ -10,6 +10,7 @@ import {
   Eye, Radio, Loader2, Glasses, Play,
 } from 'lucide-react';
 import LiveDemoSimulation from '@/components/LiveDemoSimulation';
+import { useWakeWord } from '@/hooks/useWakeWord';
 
 interface TranscriptEntry {
   id: string;
