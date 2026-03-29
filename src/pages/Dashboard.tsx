@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   MessageSquare, Target, Plus, LogOut, Zap, TrendingUp,
-  Heart, Brain, DollarSign, Briefcase, Activity, Settings,
+  Heart, Brain, DollarSign, Briefcase, Activity, Settings, Radio,
 } from 'lucide-react';
 
 const DOMAIN_ICONS: Record<string, any> = {
@@ -186,6 +186,11 @@ const Dashboard = () => {
             <Button variant="outline" className="w-full justify-start font-mono text-xs" onClick={() => navigate('/chat')}>
               <Plus className="w-4 h-4 mr-2" /> Add Goal
             </Button>
+            <Link to="/agents" className="block">
+              <Button variant="outline" className="w-full justify-start font-mono text-xs">
+                <Radio className="w-4 h-4 mr-2" /> Agent Network
+              </Button>
+            </Link>
             <Link to="/settings" className="block">
               <Button variant="outline" className="w-full justify-start font-mono text-xs">
                 <Settings className="w-4 h-4 mr-2" /> Settings

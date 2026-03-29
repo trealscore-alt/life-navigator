@@ -14,6 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_messages: {
+        Row: {
+          agent_id: string
+          clrk_response: Json | null
+          content: Json
+          created_at: string
+          direction: string
+          id: string
+          message_type: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          clrk_response?: Json | null
+          content?: Json
+          created_at?: string
+          direction: string
+          id?: string
+          message_type?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          clrk_response?: Json | null
+          content?: Json
+          created_at?: string
+          direction?: string
+          id?: string
+          message_type?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_registry: {
+        Row: {
+          agent_api_key: string | null
+          agent_description: string | null
+          agent_endpoint: string | null
+          agent_name: string
+          allowed_actions: string[] | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          last_seen_at: string | null
+          trust_level: Database["public"]["Enums"]["agent_trust_level"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_api_key?: string | null
+          agent_description?: string | null
+          agent_endpoint?: string | null
+          agent_name: string
+          allowed_actions?: string[] | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          trust_level?: Database["public"]["Enums"]["agent_trust_level"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_api_key?: string | null
+          agent_description?: string | null
+          agent_endpoint?: string | null
+          agent_name?: string
+          allowed_actions?: string[] | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          trust_level?: Database["public"]["Enums"]["agent_trust_level"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       chat_conversations: {
         Row: {
           created_at: string
@@ -258,6 +347,7 @@ export type Database = {
       }
     }
     Enums: {
+      agent_trust_level: "trusted" | "limited" | "untrusted"
       app_role: "admin" | "moderator" | "user"
       life_domain:
         | "work"
@@ -394,6 +484,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_trust_level: ["trusted", "limited", "untrusted"],
       app_role: ["admin", "moderator", "user"],
       life_domain: [
         "work",
