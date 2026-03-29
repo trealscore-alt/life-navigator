@@ -38,7 +38,17 @@ const LiveMode = () => {
   const [currentSpeech, setCurrentSpeech] = useState('');
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
   const [showDemo, setShowDemo] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  // Wake word detection — "Hey CLRK" activates Live Mode hands-free
+  const { isListening: isWakeListening } = useWakeWord({
+    onWake: () => {
+      toast.success('Wake word detected — activating CLRK Live');
+      startAll();
+    },
+    enabled: wakeWordEnabled && !isActive,
+  });
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
