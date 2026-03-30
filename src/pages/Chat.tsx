@@ -7,7 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Loader2, Bot, User } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { useVoiceConversation } from '@/hooks/useVoiceConversation';
 
 interface Message {
   id?: string;
@@ -26,6 +27,117 @@ const Chat = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const latestAssistantRef = useRef<string>('');
+
+  // Voice conversation
+  const voiceConv = useVoiceConversation({
+    onTranscript: (text) => {
+      setInput(text);
+      // Auto-send after a short delay so the user sees their words
+      setTimeout(() => {
+        sendMessageFromVoice(text);
+      }, 300);
+    },
+  });
+
+  const sendMessageFromVoice = async (text: string) => {
+    if (!text.trim() || isLoading || !user || !conversationId) return;
+    const userMsg: Message = { role: 'user', content: text.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setIsLoading(true);
+
+    await supabase.from('chat_messages').insert({
+      conversation_id: conversationId,
+      user_id: user.id,
+      role: 'user',
+      content: userMsg.content,
+    });
+
+    let assistantContent = '';
+    const upsertAssistant = (chunk: string) => {
+      assistantContent += chunk;
+      latestAssistantRef.current = assistantContent;
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant') {
+          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+        }
+        return [...prev, { role: 'assistant', content: assistantContent }];
+      });
+    };
+
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          userId: user.id,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
+
+      if (!resp.body) throw new Error('No stream body');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line.startsWith(':') || line.trim() === '') continue;
+          if (!line.startsWith('data: ')) continue;
+          const json = line.slice(6).trim();
+          if (json === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(json);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) upsertAssistant(content);
+          } catch {
+            buffer = line + '\n' + buffer;
+            break;
+          }
+        }
+      }
+
+      if (assistantContent) {
+        await supabase.from('chat_messages').insert({
+          conversation_id: conversationId,
+          user_id: user.id,
+          role: 'assistant',
+          content: assistantContent,
+        });
+        // Auto-speak in voice mode
+        if (voiceConv.isVoiceMode) {
+          voiceConv.speak(assistantContent);
+        }
+      }
+    } catch (err: any) {
+      toast({
+        title: 'CLRK Error',
+        description: err.message || 'Failed to get response',
+        variant: 'destructive',
+      });
+    }
+
+    setIsLoading(false);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -151,6 +263,10 @@ const Chat = () => {
           role: 'assistant',
           content: assistantContent,
         });
+        // Auto-speak in voice mode
+        if (voiceConv.isVoiceMode) {
+          voiceConv.speak(assistantContent);
+        }
       }
     } catch (err: any) {
       toast({
@@ -183,13 +299,30 @@ const Chat = () => {
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
             <p className="text-[10px] font-mono text-muted-foreground">
-              {isLoading ? 'Processing...' : 'Ready'}
+              {voiceConv.isSpeaking ? 'Speaking...' : voiceConv.isListening ? 'Listening...' : isLoading ? 'Processing...' : 'Ready'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-          <div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-primary animate-pulse-glow'}`} />
-          {isLoading ? 'THINKING' : 'ONLINE'}
+        <div className="flex items-center gap-2">
+          {voiceConv.isSpeaking && (
+            <Button variant="ghost" size="icon" onClick={voiceConv.stopSpeaking} className="text-muted-foreground hover:text-destructive">
+              <VolumeX className="w-4 h-4" />
+            </Button>
+          )}
+          <Button
+            variant={voiceConv.isVoiceMode ? 'default' : 'ghost'}
+            size="icon"
+            onClick={voiceConv.toggleVoiceMode}
+            className={voiceConv.isVoiceMode 
+              ? 'bg-primary text-primary-foreground shadow-[0_0_15px_-3px_hsl(var(--neon-glow)/0.5)] animate-pulse' 
+              : 'text-muted-foreground hover:text-primary'}
+          >
+            {voiceConv.isVoiceMode ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </Button>
+          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+            <div className={`w-2 h-2 rounded-full ${voiceConv.isListening ? 'bg-primary animate-pulse-glow' : isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-primary animate-pulse-glow'}`} />
+            {voiceConv.isListening ? 'LISTENING' : isLoading ? 'THINKING' : 'ONLINE'}
+          </div>
         </div>
       </header>
 
@@ -268,13 +401,22 @@ const Chat = () => {
 
       {/* Input */}
       <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
-        <div className="max-w-4xl mx-auto flex gap-3">
+        <div className="max-w-4xl mx-auto flex gap-2 sm:gap-3">
+          <Button
+            onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
+            disabled={isLoading || voiceConv.isSpeaking}
+            size="icon"
+            variant="ghost"
+            className={`flex-shrink-0 ${voiceConv.isListening ? 'text-primary bg-primary/10 shadow-[0_0_12px_-2px_hsl(var(--neon-glow)/0.5)]' : 'text-muted-foreground hover:text-primary'}`}
+          >
+            {voiceConv.isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+          </Button>
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message CLRK..."
+            placeholder={voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
             className="min-h-[44px] max-h-32 resize-none bg-secondary/50 border-border/50 focus:border-primary font-sans text-sm"
             rows={1}
           />
@@ -287,6 +429,11 @@ const Chat = () => {
             <Send className="w-4 h-4" />
           </Button>
         </div>
+        {voiceConv.isVoiceMode && (
+          <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
+            🎙️ VOICE MODE ACTIVE — Speak naturally, CLRK will respond aloud
+          </p>
+        )}
       </div>
     </div>
   );
