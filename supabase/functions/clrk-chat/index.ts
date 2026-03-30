@@ -360,13 +360,18 @@ The user is sharing images from their camera or smart glasses. You can SEE what 
 - Be specific about what you SEE — reference colors, positions, labels, and spatial relationships in the image.
 - If the image is unclear, say what you can make out and ask for a better angle.`;
     }
+
+    // Use vision-capable model when images are present
+    const model = hasImages ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + LOVABLE_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
