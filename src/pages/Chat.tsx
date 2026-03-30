@@ -325,11 +325,17 @@ const Chat = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {voiceConv.isSpeaking && (
-            <Button variant="ghost" size="icon" onClick={voiceConv.stopSpeaking} className="text-muted-foreground hover:text-destructive">
-              <VolumeX className="w-4 h-4" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (voiceConv.isSpeaking) voiceConv.stopSpeaking();
+              setIsMuted(prev => !prev);
+            }}
+            className={isMuted ? 'text-destructive hover:text-destructive/80' : 'text-primary hover:text-primary/80'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </Button>
           <Button
             variant={voiceConv.isVoiceMode ? 'default' : 'ghost'}
             size="icon"
