@@ -401,13 +401,22 @@ const Chat = () => {
 
       {/* Input */}
       <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
-        <div className="max-w-4xl mx-auto flex gap-3">
+        <div className="max-w-4xl mx-auto flex gap-2 sm:gap-3">
+          <Button
+            onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
+            disabled={isLoading || voiceConv.isSpeaking}
+            size="icon"
+            variant="ghost"
+            className={`flex-shrink-0 ${voiceConv.isListening ? 'text-primary bg-primary/10 shadow-[0_0_12px_-2px_hsl(var(--neon-glow)/0.5)]' : 'text-muted-foreground hover:text-primary'}`}
+          >
+            {voiceConv.isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+          </Button>
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message CLRK..."
+            placeholder={voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
             className="min-h-[44px] max-h-32 resize-none bg-secondary/50 border-border/50 focus:border-primary font-sans text-sm"
             rows={1}
           />
@@ -420,6 +429,11 @@ const Chat = () => {
             <Send className="w-4 h-4" />
           </Button>
         </div>
+        {voiceConv.isVoiceMode && (
+          <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
+            🎙️ VOICE MODE ACTIVE — Speak naturally, CLRK will respond aloud
+          </p>
+        )}
       </div>
     </div>
   );
