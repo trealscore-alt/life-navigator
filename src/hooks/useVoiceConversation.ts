@@ -5,9 +5,13 @@ interface UseVoiceConversationOptions {
   onTranscript: (text: string) => void;
   onSpeakStart?: () => void;
   onSpeakEnd?: () => void;
+  /** Called when user says a wake phrase like "listen CLRK" */
+  onWake?: () => void;
+  /** Called when user says "stop" to silence CLRK */
+  onStop?: () => void;
 }
 
-export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }: UseVoiceConversationOptions) {
+export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, onWake, onStop }: UseVoiceConversationOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -55,17 +59,33 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
     
     recognition.onresult = (event: any) => {
-      const text = event.results[0]?.[0]?.transcript?.trim();
-      if (text) {
-        onTranscript(text);
+      const text = event.results[event.results.length - 1]?.[0]?.transcript?.trim();
+      if (!text) return;
+
+      const lower = text.toLowerCase().replace(/[^a-z\s]/g, '');
+
+      // "stop" command — silence CLRK
+      if (/\b(stop|shut up|be quiet|silence|enough)\b/.test(lower)) {
+        stopSpeaking();
+        onStop?.();
+        // Keep listening for next command in voice mode
+        return;
       }
+
+      // "listen CLRK" wake command — activate voice mode if not already
+      if (/\blisten\s*(clrk|clark|clerk)\b/.test(lower) || /\bhey\s*(clrk|clark|clerk)\b/.test(lower)) {
+        onWake?.();
+        return;
+      }
+
+      onTranscript(text);
     };
 
     recognition.onend = () => {
