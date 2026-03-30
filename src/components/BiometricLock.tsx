@@ -244,8 +244,55 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
           </span>
         </div>
 
-        {/* CLRK Logo */}
-        <h1 className="text-5xl font-mono font-bold neon-text tracking-wider mb-2">CLRK</h1>
+        {/* CLRK Logo - star explosion intro */}
+        <div className="relative mb-2">
+          {/* Initial star glow that fades out */}
+          <motion.div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            initial={{ opacity: 1, scale: 0.3 }}
+            animate={{ opacity: 0, scale: 3 }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+          >
+            <div
+              className="w-20 h-20 rounded-full"
+              style={{
+                background: 'radial-gradient(circle, hsl(210 100% 80%), hsl(220 100% 60%), hsl(230 100% 40%), transparent)',
+                boxShadow: '0 0 60px 30px hsl(215 100% 60% / 0.8), 0 0 120px 60px hsl(220 100% 50% / 0.4)',
+              }}
+            />
+          </motion.div>
+
+          {/* Explosion particles */}
+          {Array.from({ length: 12 }).map((_, i) => {
+            const angle = (i / 12) * Math.PI * 2;
+            const dist = 80 + Math.random() * 40;
+            return (
+              <motion.div
+                key={i}
+                className="absolute top-1/2 left-1/2 w-2 h-2 rounded-full"
+                style={{ background: `hsl(${200 + Math.random() * 40} 100% ${60 + Math.random() * 30}%)` }}
+                initial={{ x: 0, y: 0, opacity: 1, scale: 1.5 }}
+                animate={{
+                  x: Math.cos(angle) * dist,
+                  y: Math.sin(angle) * dist,
+                  opacity: 0,
+                  scale: 0,
+                }}
+                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
+              />
+            );
+          })}
+
+          {/* The CLRK text scales from tiny bright point */}
+          <motion.h1
+            className="text-5xl font-mono font-bold neon-text tracking-wider"
+            initial={{ scale: 0, opacity: 0, filter: 'brightness(3) blur(8px)' }}
+            animate={{ scale: 1, opacity: 1, filter: 'brightness(1) blur(0px)' }}
+            transition={{ duration: 0.9, delay: 0.3, type: 'spring', stiffness: 120, damping: 12 }}
+          >
+            CLRK
+          </motion.h1>
+        </div>
         {userName && (
           <p className="text-muted-foreground text-sm font-mono mb-12">
             Welcome back, <span className="text-foreground">{userName}</span>
