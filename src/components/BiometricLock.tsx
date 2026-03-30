@@ -283,21 +283,53 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
             );
           })}
 
-          {/* The CLRK text scales from tiny bright point */}
+          {/* The CLRK text scales from tiny bright point, then vibrates */}
           <motion.h1
             className="text-5xl font-mono font-bold neon-text tracking-wider"
             initial={{ scale: 0, opacity: 0, filter: 'brightness(3) blur(8px)' }}
-            animate={{ scale: 1, opacity: 1, filter: 'brightness(1) blur(0px)' }}
-            transition={{ duration: 2, delay: 0.8, type: 'spring', stiffness: 80, damping: 14 }}
+            animate={{
+              scale: 1,
+              opacity: 1,
+              filter: 'brightness(1) blur(0px)',
+              x: [0, -3, 3, -2, 2, -1, 1, 0, -3, 3, -2, 2, -1, 1, 0, -3, 3, -2, 2, -1, 1, 0],
+            }}
+            transition={{
+              scale: { duration: 2, delay: 0.8, type: 'spring', stiffness: 80, damping: 14 },
+              opacity: { duration: 2, delay: 0.8 },
+              filter: { duration: 2, delay: 0.8 },
+              x: {
+                delay: 3,
+                duration: 3.3,
+                ease: 'linear',
+              },
+            }}
           >
             CLRK
           </motion.h1>
         </div>
-        {userName && (
-          <p className="text-muted-foreground text-sm font-mono mb-12">
-            Welcome back, <span className="text-foreground">{userName}</span>
+        {/* Welcome back text - each word lights up on each vibration */}
+        <div className="mb-12 h-6">
+          <p className="text-sm font-mono flex items-center justify-center gap-1.5">
+            {['Welcome', 'back,', userName || 'Agent'].map((word, i) => (
+              <motion.span
+                key={i}
+                className={i === 2 ? 'text-foreground' : 'text-muted-foreground'}
+                initial={{ opacity: 0.15, filter: 'brightness(0.3)' }}
+                animate={{ opacity: 1, filter: 'brightness(1)' }}
+                transition={{ duration: 0.4, delay: 3 + i * 1.1 }}
+                style={{ textShadow: 'none' }}
+              >
+                <motion.span
+                  initial={{ textShadow: '0 0 0px transparent' }}
+                  animate={{ textShadow: [`0 0 0px transparent`, `0 0 12px hsl(185 100% 50% / 0.8)`, `0 0 4px hsl(185 100% 50% / 0.3)`] }}
+                  transition={{ duration: 0.6, delay: 3 + i * 1.1 }}
+                >
+                  {word}
+                </motion.span>
+              </motion.span>
+            ))}
           </p>
-        )}
+        </div>
 
         {/* Scan options */}
         <div className="flex gap-8 mb-8">
