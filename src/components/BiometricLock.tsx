@@ -81,8 +81,10 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
   }, [scanning, onUnlock]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 grid-bg opacity-20" />
+    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-[#020510]">
+      {/* Shooting stars canvas */}
+      <ShootingStars />
+      <div className="absolute inset-0 grid-bg opacity-10" />
       <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Radial scan glow */}
