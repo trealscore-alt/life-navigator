@@ -180,7 +180,7 @@ const AgentNetwork = () => {
 
       {/* Header */}
       <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <Link to="/dashboard">
               <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
@@ -284,7 +284,7 @@ const AgentNetwork = () => {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8 space-y-6 sm:space-y-8">
         {/* Trust Protocol Overview */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card neon-border rounded-xl p-5">
           <h3 className="font-mono text-xs text-primary uppercase tracking-wider mb-3 flex items-center gap-2">

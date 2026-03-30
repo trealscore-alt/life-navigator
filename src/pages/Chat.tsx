@@ -175,7 +175,7 @@ const Chat = () => {
       <div className="absolute inset-0 grid-bg opacity-5" />
 
       {/* Header */}
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-6 py-3 flex items-center justify-between">
+      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link to="/dashboard">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
@@ -194,7 +194,7 @@ const Chat = () => {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto relative z-10 px-6 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto relative z-10 px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -231,7 +231,7 @@ const Chat = () => {
                 <Bot className="w-4 h-4 text-primary" />
               </div>
             )}
-            <div className={`max-w-[75%] rounded-xl px-4 py-3 ${
+            <div className={`max-w-[85%] sm:max-w-[75%] rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 ${
               msg.role === 'user'
                 ? 'bg-accent/20 border border-accent/30 text-foreground'
                 : 'glass-card border border-border/50'
@@ -267,7 +267,7 @@ const Chat = () => {
       </div>
 
       {/* Input */}
-      <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-4">
+      <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
         <div className="max-w-4xl mx-auto flex gap-3">
           <Textarea
             ref={textareaRef}

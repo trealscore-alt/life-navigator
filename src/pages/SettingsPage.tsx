@@ -56,12 +56,12 @@ const SettingsPage = () => {
   const OptionGroup = ({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) => (
     <div>
       <label className="text-xs font-mono text-muted-foreground uppercase mb-2 block">{label}</label>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {options.map(o => (
           <button
             key={o}
             onClick={() => onChange(o)}
-            className={`flex-1 py-2 rounded-md text-sm font-mono capitalize transition-all ${
+            className={`flex-1 min-w-[80px] py-2 rounded-md text-xs sm:text-sm font-mono capitalize transition-all ${
               value === o ? 'bg-primary text-primary-foreground' : 'bg-secondary/50 text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -76,15 +76,15 @@ const SettingsPage = () => {
     <div className="min-h-screen relative">
       <div className="absolute inset-0 grid-bg opacity-10" />
 
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-6 py-4 flex items-center gap-4">
+      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-4">
         <Link to="/dashboard">
           <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <h1 className="font-mono text-lg neon-text">Settings</h1>
       </header>
 
-      <main className="relative z-10 max-w-2xl mx-auto px-6 py-8 space-y-8">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card neon-border rounded-xl p-8 space-y-6">
+      <main className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-4 sm:py-8 space-y-6 sm:space-y-8">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card neon-border rounded-xl p-4 sm:p-8 space-y-5 sm:space-y-6">
           <h2 className="font-mono text-xl">User Strategic Profile</h2>
 
           <div>

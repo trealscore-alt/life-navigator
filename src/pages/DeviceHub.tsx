@@ -196,7 +196,7 @@ const DeviceHub = () => {
 
       {/* Header */}
       <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
             <div>
@@ -226,7 +226,7 @@ const DeviceHub = () => {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8 space-y-6 sm:space-y-8">
         {!isNative && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card neon-border rounded-xl p-5">
             <div className="flex items-start gap-3">
@@ -359,7 +359,7 @@ const DeviceHub = () => {
         )}
 
         {/* Stats */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-4 gap-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {[
             { icon: BluetoothSearching, label: 'Discovered', value: devices.length, color: 'neon-text' },
             { icon: BluetoothConnected, label: 'Connected', value: connectedCount, color: 'text-green-400' },

@@ -340,7 +340,7 @@ const LiveMode = () => {
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b border-border/30">
+      <header className="flex items-center justify-between p-3 sm:p-4 border-b border-border/30 gap-2">
         <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
           <span className="text-sm font-mono">EXIT LIVE</span>
@@ -366,7 +366,7 @@ const LiveMode = () => {
       ) : (
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Camera feed */}
-        <div className="relative lg:w-1/2 bg-black flex items-center justify-center min-h-[300px]">
+        <div className="relative lg:w-1/2 bg-black flex items-center justify-center min-h-[200px] sm:min-h-[300px]">
           {cameraOn ? (
             <>
               <video

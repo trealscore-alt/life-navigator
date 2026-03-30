@@ -339,14 +339,14 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
         </div>
 
         {/* Scan options */}
-        <div className="flex gap-8 mb-8">
+        <div className="flex gap-4 sm:gap-8 mb-8">
           {/* Fingerprint */}
           <button
             onClick={() => startScan('fingerprint')}
             disabled={scanning}
             className="group flex flex-col items-center gap-3 focus:outline-none"
           >
-            <div className={`relative w-28 h-28 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+            <div className={`relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl flex items-center justify-center transition-all duration-500 ${
               scanning && scanType === 'fingerprint'
                 ? 'neon-border bg-primary/10'
                 : unlocked
@@ -396,7 +396,7 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
             disabled={scanning}
             className="group flex flex-col items-center gap-3 focus:outline-none"
           >
-            <div className={`relative w-28 h-28 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+            <div className={`relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl flex items-center justify-center transition-all duration-500 ${
               scanning && scanType === 'retina'
                 ? 'neon-border bg-primary/10'
                 : unlocked
