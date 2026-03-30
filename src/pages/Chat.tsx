@@ -263,6 +263,10 @@ const Chat = () => {
           role: 'assistant',
           content: assistantContent,
         });
+        // Auto-speak in voice mode
+        if (voiceConv.isVoiceMode) {
+          voiceConv.speak(assistantContent);
+        }
       }
     } catch (err: any) {
       toast({
