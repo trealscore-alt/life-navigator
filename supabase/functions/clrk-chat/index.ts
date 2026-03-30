@@ -279,6 +279,11 @@ serve(async (req) => {
   try {
     const { messages, userId, voiceMode } = await req.json();
 
+    // Detect if any message contains image content
+    const hasImages = messages.some((m: any) =>
+      Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image_url')
+    );
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
