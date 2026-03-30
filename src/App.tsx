@@ -39,6 +39,7 @@ const AppRoutes = () => (
     <Route path="/devices" element={<ProtectedRoute><DeviceHub /></ProtectedRoute>} />
     <Route path="/live" element={<ProtectedRoute><LiveMode /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+    <Route path="/social" element={<ProtectedRoute><SocialMedia /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
