@@ -449,6 +449,15 @@ const Chat = () => {
                 ? 'bg-accent/20 border border-accent/30 text-foreground'
                 : 'glass-card border border-border/50'
             }`}>
+              {msg.imageBase64 && (
+                <div className="mb-2">
+                  <img
+                    src={msg.imageBase64}
+                    alt="Camera capture"
+                    className="rounded-lg max-h-48 w-auto border border-border/30"
+                  />
+                </div>
+              )}
               {msg.role === 'assistant' ? (
                 <div className="prose prose-sm prose-invert max-w-none [&_p]:text-sm [&_p]:text-foreground/90 [&_li]:text-sm [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-mono [&_h2]:font-mono [&_h3]:font-mono [&_code]:text-primary [&_strong]:text-foreground">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
