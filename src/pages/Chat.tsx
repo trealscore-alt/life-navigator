@@ -143,8 +143,8 @@ const Chat = () => {
           role: 'assistant',
           content: assistantContent,
         });
-        // Auto-speak in voice mode
-        if (voiceConv.isVoiceMode) {
+        // Always speak responses unless muted
+        if (!isMuted) {
           voiceConv.speak(assistantContent);
         }
       }
