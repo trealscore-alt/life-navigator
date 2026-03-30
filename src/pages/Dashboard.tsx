@@ -12,7 +12,7 @@ import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import {
   MessageSquare, Target, LogOut, Zap, TrendingUp,
   Heart, Brain, DollarSign, Briefcase, Activity, Settings,
-  Radio, Bluetooth, Eye, Shield, ChevronRight, Clock, Cpu,
+  Radio, Bluetooth, Eye, Shield, ChevronRight, Clock, Cpu, Share2,
 } from 'lucide-react';
 
 const DOMAIN_ICONS: Record<string, any> = {
@@ -147,6 +147,11 @@ const Dashboard = () => {
             <Link to="/devices">
               <Button size="sm" variant="outline" className="font-mono text-xs">
                 <Bluetooth className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Devices</span>
+              </Button>
+            </Link>
+            <Link to="/social">
+              <Button size="sm" variant="outline" className="font-mono text-xs">
+                <Share2 className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Social</span>
               </Button>
             </Link>
           </div>
