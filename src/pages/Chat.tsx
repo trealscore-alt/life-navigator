@@ -49,6 +49,11 @@ const Chat = () => {
     };
   }, []);
 
+  // Use refs to break circular dependency between voiceConv and its callbacks
+  const stopSpeakingRef = useRef<() => void>(() => {});
+  const toggleVoiceModeRef = useRef<() => void>(() => {});
+  const isVoiceModeRef = useRef(false);
+
   // Voice conversation
   const voiceConv = useVoiceConversation({
     onTranscript: (text) => {
@@ -58,16 +63,19 @@ const Chat = () => {
       }, 300);
     },
     onStop: () => {
-      // User said "stop" — silence CLRK
-      voiceConv.stopSpeaking();
+      stopSpeakingRef.current();
     },
     onWake: () => {
-      // User said "listen CLRK" — activate voice mode if not already
-      if (!voiceConv.isVoiceMode) {
-        voiceConv.toggleVoiceMode();
+      if (!isVoiceModeRef.current) {
+        toggleVoiceModeRef.current();
       }
     },
   });
+
+  // Keep refs in sync
+  stopSpeakingRef.current = voiceConv.stopSpeaking;
+  toggleVoiceModeRef.current = voiceConv.toggleVoiceMode;
+  isVoiceModeRef.current = voiceConv.isVoiceMode;
 
   const sendMessageFromVoice = async (text: string) => {
     if (!text.trim() || isLoading || !user || !conversationId) return;
