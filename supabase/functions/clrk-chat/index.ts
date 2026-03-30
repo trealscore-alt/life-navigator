@@ -279,6 +279,11 @@ serve(async (req) => {
   try {
     const { messages, userId, voiceMode } = await req.json();
 
+    // Detect if any message contains image content
+    const hasImages = messages.some((m: any) =>
+      Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image_url')
+    );
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -339,6 +344,26 @@ The user is speaking to you out loud and will HEAR your response spoken via text
 - Think of yourself as their brilliant trusted friend sitting across from them having coffee.`;
     }
 
+    // Add visual analysis context when images are present
+    if (hasImages) {
+      systemPrompt += `
+
+## VISUAL ANALYSIS MODE (CAMERA/SMART GLASSES FEED ACTIVE)
+The user is sharing images from their camera or smart glasses. You can SEE what they see. Apply your full expertise:
+
+- **Identify** everything visible: tools, parts, components, labels, error codes, wiring, plumbing, structural elements, screens, gauges, materials, people, environments.
+- **Assess** the situation: what's been done, what's wrong, what needs to happen next, safety hazards.
+- **Guide** step-by-step in real-time: "I can see the red wire connected to the wrong terminal — move it to the brass screw on the right."
+- **Warn** about dangers: exposed wiring, gas hazards, structural risks, missing PPE, incorrect tool usage.
+- **Verify** completed work: "That joint looks solid" or "That connection isn't tight enough — give it another quarter turn."
+- **Diagnose** problems: read error codes, identify faulty parts, spot installation mistakes, recognize wear patterns.
+- Be specific about what you SEE — reference colors, positions, labels, and spatial relationships in the image.
+- If the image is unclear, say what you can make out and ask for a better angle.`;
+    }
+
+    // Use vision-capable model when images are present
+    const model = hasImages ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -346,7 +371,7 @@ The user is speaking to you out loud and will HEAR your response spoken via text
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,

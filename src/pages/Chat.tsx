@@ -7,13 +7,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image } from 'lucide-react';
+import { CameraCapture } from '@/components/CameraCapture';
 import { useVoiceConversation } from '@/hooks/useVoiceConversation';
 
 interface Message {
   id?: string;
   role: 'user' | 'assistant';
   content: string;
+  imageBase64?: string; // For displaying captured images in chat
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-chat`;
@@ -26,6 +28,8 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [cameraStreaming, setCameraStreaming] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const latestAssistantRef = useRef<string>('');
@@ -77,18 +81,46 @@ const Chat = () => {
   toggleVoiceModeRef.current = voiceConv.toggleVoiceMode;
   isVoiceModeRef.current = voiceConv.isVoiceMode;
 
+  // Build API message content — supports multimodal (text + image)
+  const buildApiMessages = (msgs: Message[]) => {
+    return msgs.map(m => {
+      if (m.imageBase64) {
+        // Multimodal message with image
+        return {
+          role: m.role,
+          content: [
+            ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+            {
+              type: 'image_url' as const,
+              image_url: { url: m.imageBase64 },
+            },
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+  };
+
+  const handleCameraCapture = (imageBase64: string) => {
+    setPendingImage(imageBase64);
+    textareaRef.current?.focus();
+    toast({ title: '📸 Image attached', description: 'Add a message or send directly — CLRK will analyze what you captured.' });
+  };
+
   const sendMessageFromVoice = async (text: string) => {
     if (!text.trim() || isLoading || !user || !conversationId) return;
-    const userMsg: Message = { role: 'user', content: text.trim() };
+    const currentImage = pendingImage;
+    const userMsg: Message = { role: 'user', content: text.trim(), imageBase64: currentImage || undefined };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setPendingImage(null);
     setIsLoading(true);
 
     await supabase.from('chat_messages').insert({
       conversation_id: conversationId,
       user_id: user.id,
       role: 'user',
-      content: userMsg.content,
+      content: currentImage ? `[Image attached] ${userMsg.content}` : userMsg.content,
     });
 
     let assistantContent = '';
@@ -112,7 +144,7 @@ const Chat = () => {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: true,
         }),
@@ -216,11 +248,14 @@ const Chat = () => {
   }, [user]);
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !conversationId) return;
+    if ((!input.trim() && !pendingImage) || isLoading || !user || !conversationId) return;
 
-    const userMsg: Message = { role: 'user', content: input.trim() };
+    const currentImage = pendingImage;
+    const content = input.trim() || (currentImage ? 'What do you see in this image? Analyze it and help me.' : '');
+    const userMsg: Message = { role: 'user', content, imageBase64: currentImage || undefined };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setPendingImage(null);
     setIsLoading(true);
 
     // Save user message
@@ -228,7 +263,7 @@ const Chat = () => {
       conversation_id: conversationId,
       user_id: user.id,
       role: 'user',
-      content: userMsg.content,
+      content: currentImage ? `[Image attached] ${content}` : content,
     });
 
     let assistantContent = '';
@@ -252,7 +287,7 @@ const Chat = () => {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: voiceConv.isVoiceMode,
         }),
@@ -414,6 +449,15 @@ const Chat = () => {
                 ? 'bg-accent/20 border border-accent/30 text-foreground'
                 : 'glass-card border border-border/50'
             }`}>
+              {msg.imageBase64 && (
+                <div className="mb-2">
+                  <img
+                    src={msg.imageBase64}
+                    alt="Camera capture"
+                    className="rounded-lg max-h-48 w-auto border border-border/30"
+                  />
+                </div>
+              )}
               {msg.role === 'assistant' ? (
                 <div className="prose prose-sm prose-invert max-w-none [&_p]:text-sm [&_p]:text-foreground/90 [&_li]:text-sm [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-mono [&_h2]:font-mono [&_h3]:font-mono [&_code]:text-primary [&_strong]:text-foreground">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -446,6 +490,19 @@ const Chat = () => {
 
       {/* Input */}
       <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
+        {/* Pending image preview */}
+        {pendingImage && (
+          <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
+            <img src={pendingImage} alt="Pending capture" className="h-16 w-auto rounded-lg border border-primary/30" />
+            <div className="flex-1">
+              <p className="text-[10px] font-mono text-primary">📸 Image attached</p>
+              <p className="text-[9px] text-muted-foreground">CLRK will analyze this with your message</p>
+            </div>
+            <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => setPendingImage(null)}>
+              <span className="text-xs text-muted-foreground">✕</span>
+            </Button>
+          </div>
+        )}
         <div className="max-w-4xl mx-auto flex gap-2 sm:gap-3">
           <Button
             onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
@@ -456,18 +513,23 @@ const Chat = () => {
           >
             {voiceConv.isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
           </Button>
+          <CameraCapture
+            onCapture={handleCameraCapture}
+            isStreaming={cameraStreaming}
+            onStreamToggle={setCameraStreaming}
+          />
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
+            placeholder={pendingImage ? 'Ask CLRK about this image...' : voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
             className="min-h-[44px] max-h-32 resize-none bg-secondary/50 border-border/50 focus:border-primary font-sans text-sm"
             rows={1}
           />
           <Button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && !pendingImage) || isLoading}
             size="icon"
             className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_-3px_hsl(var(--neon-glow)/0.4)] flex-shrink-0"
           >
@@ -477,6 +539,11 @@ const Chat = () => {
         {voiceConv.isVoiceMode && (
           <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
             🎙️ VOICE MODE ACTIVE — Speak naturally, CLRK will respond aloud
+          </p>
+        )}
+        {cameraStreaming && (
+          <p className="text-center text-[10px] font-mono text-primary/60 mt-1">
+            📷 CAMERA ACTIVE — Capture a frame for CLRK to analyze
           </p>
         )}
       </div>
