@@ -1,6 +1,140 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Fingerprint, ScanEye } from 'lucide-react';
+
+const ShootingStars = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    const dpr = window.devicePixelRatio || 1;
+
+    const resize = () => {
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.scale(dpr, dpr);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    interface Star { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; size: number; hue: number; }
+    const stars: Star[] = [];
+    const bgStars: { x: number; y: number; r: number; a: number; twinkle: number }[] = [];
+
+    // Static background stars
+    for (let i = 0; i < 200; i++) {
+      bgStars.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        r: Math.random() * 1.5 + 0.3,
+        a: Math.random() * 0.8 + 0.2,
+        twinkle: Math.random() * Math.PI * 2,
+      });
+    }
+
+    const spawnStar = () => {
+      const angle = Math.random() * 0.8 + 0.3; // downward-ish
+      const speed = Math.random() * 6 + 3;
+      const hue = Math.random() * 40 + 200; // blue range 200-240
+      stars.push({
+        x: Math.random() * window.innerWidth * 1.2 - window.innerWidth * 0.1,
+        y: -10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0,
+        maxLife: Math.random() * 60 + 40,
+        size: Math.random() * 2 + 1,
+        hue,
+      });
+    };
+
+    let frame = 0;
+    const draw = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      // Deep space gradient
+      const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.8);
+      grad.addColorStop(0, '#050d1a');
+      grad.addColorStop(0.5, '#020510');
+      grad.addColorStop(1, '#000208');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Nebula glow
+      const neb = ctx.createRadialGradient(w * 0.3, h * 0.4, 0, w * 0.3, h * 0.4, w * 0.4);
+      neb.addColorStop(0, 'rgba(30, 60, 180, 0.06)');
+      neb.addColorStop(0.5, 'rgba(20, 40, 140, 0.03)');
+      neb.addColorStop(1, 'transparent');
+      ctx.fillStyle = neb;
+      ctx.fillRect(0, 0, w, h);
+
+      // Background stars with twinkle
+      frame++;
+      for (const s of bgStars) {
+        const flicker = Math.sin(frame * 0.02 + s.twinkle) * 0.3 + 0.7;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(180, 200, 255, ${s.a * flicker})`;
+        ctx.fill();
+      }
+
+      // Spawn shooting stars
+      if (Math.random() < 0.08) spawnStar();
+
+      // Draw shooting stars
+      for (let i = stars.length - 1; i >= 0; i--) {
+        const s = stars[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        s.life++;
+        const progress = s.life / s.maxLife;
+        const alpha = progress < 0.1 ? progress * 10 : progress > 0.7 ? (1 - progress) / 0.3 : 1;
+
+        // Trail
+        const tailLen = 30;
+        const gradient = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * tailLen * 0.3, s.y - s.vy * tailLen * 0.3);
+        gradient.addColorStop(0, `hsla(${s.hue}, 90%, 70%, ${alpha * 0.9})`);
+        gradient.addColorStop(0.4, `hsla(${s.hue}, 80%, 50%, ${alpha * 0.4})`);
+        gradient.addColorStop(1, `hsla(${s.hue}, 70%, 40%, 0)`);
+
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - s.vx * tailLen * 0.3, s.y - s.vy * tailLen * 0.3);
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = s.size;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Head glow
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${s.hue}, 100%, 85%, ${alpha * 0.8})`;
+        ctx.fill();
+
+        if (s.life >= s.maxLife) stars.splice(i, 1);
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 z-0" />;
+};
 
 function playUnlockSound() {
   try {
@@ -81,8 +215,10 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
   }, [scanning, onUnlock]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 grid-bg opacity-20" />
+    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-[#020510]">
+      {/* Shooting stars canvas */}
+      <ShootingStars />
+      <div className="absolute inset-0 grid-bg opacity-10" />
       <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Radial scan glow */}
