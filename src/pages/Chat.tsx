@@ -57,6 +57,16 @@ const Chat = () => {
         sendMessageFromVoice(text);
       }, 300);
     },
+    onStop: () => {
+      // User said "stop" — silence CLRK
+      voiceConv.stopSpeaking();
+    },
+    onWake: () => {
+      // User said "listen CLRK" — activate voice mode if not already
+      if (!voiceConv.isVoiceMode) {
+        voiceConv.toggleVoiceMode();
+      }
+    },
   });
 
   const sendMessageFromVoice = async (text: string) => {
