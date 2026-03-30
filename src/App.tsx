@@ -12,6 +12,7 @@ import AgentNetwork from "./pages/AgentNetwork";
 import DeviceHub from "./pages/DeviceHub";
 import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
+import SocialMedia from "./pages/SocialMedia";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
