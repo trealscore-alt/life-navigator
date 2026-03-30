@@ -283,25 +283,32 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
             );
           })}
 
-          {/* The CLRK text scales from tiny bright point, then vibrates */}
+          {/* The CLRK text scales from tiny bright point, then pulses with energy */}
           <motion.h1
             className="text-5xl font-mono font-bold neon-text tracking-wider"
             initial={{ scale: 0, opacity: 0, filter: 'brightness(3) blur(8px)' }}
             animate={{
-              scale: 1,
-              opacity: 1,
-              filter: 'brightness(1) blur(0px)',
-              x: [0, -3, 3, -2, 2, -1, 1, 0, -3, 3, -2, 2, -1, 1, 0, -3, 3, -2, 2, -1, 1, 0],
+              scale: [0, 1, 1, 1.08, 1, 1, 1.06, 1, 1, 1.05, 1],
+              opacity: [0, 1, 1, 0.6, 1, 1, 0.5, 1, 1, 0.4, 1],
+              filter: [
+                'brightness(3) blur(8px)',
+                'brightness(1) blur(0px)',
+                'brightness(1) blur(0px)',
+                'brightness(2.5) blur(3px)',
+                'brightness(1) blur(0px)',
+                'brightness(1) blur(0px)',
+                'brightness(2.2) blur(2px)',
+                'brightness(1) blur(0px)',
+                'brightness(1) blur(0px)',
+                'brightness(2) blur(2px)',
+                'brightness(1) blur(0px)',
+              ],
             }}
             transition={{
-              scale: { duration: 2, delay: 0.8, type: 'spring', stiffness: 80, damping: 14 },
-              opacity: { duration: 2, delay: 0.8 },
-              filter: { duration: 2, delay: 0.8 },
-              x: {
-                delay: 3,
-                duration: 3.3,
-                ease: 'linear',
-              },
+              duration: 6,
+              delay: 0.8,
+              times: [0, 0.35, 0.44, 0.48, 0.52, 0.62, 0.66, 0.70, 0.80, 0.84, 0.88],
+              ease: 'easeInOut',
             }}
           >
             CLRK
