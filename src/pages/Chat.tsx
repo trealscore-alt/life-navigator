@@ -81,7 +81,32 @@ const Chat = () => {
   toggleVoiceModeRef.current = voiceConv.toggleVoiceMode;
   isVoiceModeRef.current = voiceConv.isVoiceMode;
 
-  const sendMessageFromVoice = async (text: string) => {
+  // Build API message content — supports multimodal (text + image)
+  const buildApiMessages = (msgs: Message[]) => {
+    return msgs.map(m => {
+      if (m.imageBase64) {
+        // Multimodal message with image
+        return {
+          role: m.role,
+          content: [
+            ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+            {
+              type: 'image_url' as const,
+              image_url: { url: m.imageBase64 },
+            },
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+  };
+
+  const handleCameraCapture = (imageBase64: string) => {
+    setPendingImage(imageBase64);
+    textareaRef.current?.focus();
+    toast({ title: '📸 Image attached', description: 'Add a message or send directly — CLRK will analyze what you captured.' });
+  };
+
     if (!text.trim() || isLoading || !user || !conversationId) return;
     const userMsg: Message = { role: 'user', content: text.trim() };
     setMessages(prev => [...prev, userMsg]);
