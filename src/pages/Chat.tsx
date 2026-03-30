@@ -28,6 +28,8 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [cameraStreaming, setCameraStreaming] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const latestAssistantRef = useRef<string>('');
