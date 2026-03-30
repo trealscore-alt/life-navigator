@@ -77,6 +77,7 @@ const Chat = () => {
         body: JSON.stringify({
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
           userId: user.id,
+          voiceMode: true,
         }),
       });
 
@@ -216,6 +217,7 @@ const Chat = () => {
         body: JSON.stringify({
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
           userId: user.id,
+          voiceMode: voiceConv.isVoiceMode,
         }),
       });
 

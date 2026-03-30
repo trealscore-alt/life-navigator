@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 
 interface UseVoiceConversationOptions {
@@ -14,6 +14,22 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
   const recognitionRef = useRef<any>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const shouldRestartRef = useRef(false);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+
+  // Pre-load voices — Chrome requires waiting for voiceschanged
+  useEffect(() => {
+    if (!window.speechSynthesis) return;
+
+    const loadVoices = () => {
+      voicesRef.current = window.speechSynthesis.getVoices();
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, []);
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
@@ -32,7 +48,7 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
     }
 
     // Don't start if currently speaking
-    if (window.speechSynthesis.speaking) return;
+    if (window.speechSynthesis?.speaking) return;
 
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* ignore */ }
@@ -75,7 +91,7 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
       return;
     }
 
-    // Stop any ongoing speech
+    // Stop any ongoing speech & listening
     window.speechSynthesis.cancel();
     stopListening();
 
@@ -89,25 +105,37 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
       .replace(/[-•]\s/g, '')
       .replace(/\n{2,}/g, '. ')
       .replace(/\n/g, '. ')
+      .replace(/\s{2,}/g, ' ')
       .trim();
 
+    if (!cleanText) return;
+
     // Limit length for TTS
-    const truncated = cleanText.length > 1500 ? cleanText.slice(0, 1500) + '... I have more details if you need them.' : cleanText;
+    const truncated = cleanText.length > 800 
+      ? cleanText.slice(0, 800) + '... I have more details if you want.' 
+      : cleanText;
 
     const utterance = new SpeechSynthesisUtterance(truncated);
-    utterance.rate = 1.05;
-    utterance.pitch = 0.95;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
     utterance.volume = 1;
 
-    // Try to pick a good voice
-    const voices = window.speechSynthesis.getVoices();
+    // Pick the best available voice
+    const voices = voicesRef.current.length > 0 
+      ? voicesRef.current 
+      : window.speechSynthesis.getVoices();
+    
     const preferred = voices.find(v => 
+      v.name.includes('Google UK English Male') 
+    ) || voices.find(v => 
       v.name.includes('Google') && v.lang.startsWith('en')
     ) || voices.find(v => 
-      v.lang.startsWith('en') && v.name.includes('Male')
+      v.lang.startsWith('en-') && !v.name.includes('Female')
     ) || voices.find(v => v.lang.startsWith('en'));
     
-    if (preferred) utterance.voice = preferred;
+    if (preferred) {
+      utterance.voice = preferred;
+    }
 
     utterance.onstart = () => {
       setIsSpeaking(true);
@@ -119,17 +147,22 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }:
       onSpeakEnd?.();
       // Auto-listen again in voice mode
       if (shouldRestartRef.current) {
-        setTimeout(() => startListening(), 400);
+        setTimeout(() => startListening(), 500);
       }
     };
 
-    utterance.onerror = () => {
+    utterance.onerror = (e) => {
+      console.error('TTS error:', e);
       setIsSpeaking(false);
       onSpeakEnd?.();
     };
 
     utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    
+    // Chrome bug workaround: speechSynthesis can stall if called too fast
+    setTimeout(() => {
+      window.speechSynthesis.speak(utterance);
+    }, 100);
   }, [stopListening, startListening, onSpeakStart, onSpeakEnd]);
 
   const stopSpeaking = useCallback(() => {

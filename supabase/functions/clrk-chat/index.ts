@@ -187,7 +187,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, userId } = await req.json();
+    const { messages, userId, voiceMode } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
@@ -229,7 +229,25 @@ serve(async (req) => {
       }
     }
 
-    const systemPrompt = buildSystemPrompt(userContext);
+    let systemPrompt = buildSystemPrompt(userContext);
+
+    // In voice mode, make CLRK conversational and concise
+    if (voiceMode) {
+      systemPrompt += `
+
+## VOICE CONVERSATION MODE (ACTIVE)
+The user is speaking to you out loud and will HEAR your response spoken via text-to-speech. Adapt accordingly:
+
+- Be conversational and natural — speak like a real person. Use contractions, casual phrasing, warmth.
+- Keep responses SHORT — 2-4 sentences for simple questions. Never exceed 6 sentences unless asked for detail.
+- NO markdown formatting — no headers, bullets, bold, code blocks, or lists. Use plain flowing sentences.
+- NO numbered steps or structured frameworks — just talk naturally.
+- Ask follow-up questions — keep the conversation going. Be curious and engaged.
+- Use the user's name occasionally to feel personal.
+- Be direct and opinionated — take a stance when appropriate.
+- Sound human — use phrases like "honestly", "here's what I think", "look", "the thing is".
+- Think of yourself as their brilliant trusted friend sitting across from them having coffee.`;
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
