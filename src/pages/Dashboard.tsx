@@ -12,7 +12,7 @@ import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import {
   MessageSquare, Target, LogOut, Zap, TrendingUp,
   Heart, Brain, DollarSign, Briefcase, Activity, Settings,
-  Radio, Bluetooth, Eye, Shield, ChevronRight, Clock, Cpu,
+  Radio, Bluetooth, Eye, Shield, ChevronRight, Clock, Cpu, Share2,
 } from 'lucide-react';
 
 const DOMAIN_ICONS: Record<string, any> = {
