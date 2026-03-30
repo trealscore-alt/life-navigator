@@ -25,15 +25,34 @@ const Chat = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const latestAssistantRef = useRef<string>('');
+  const ttsUnlockedRef = useRef(false);
+
+  // Unlock TTS on first user interaction (required by browsers)
+  useEffect(() => {
+    const unlock = () => {
+      if (ttsUnlockedRef.current) return;
+      ttsUnlockedRef.current = true;
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis?.speak(u);
+      window.speechSynthesis?.cancel();
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   // Voice conversation
   const voiceConv = useVoiceConversation({
     onTranscript: (text) => {
       setInput(text);
-      // Auto-send after a short delay so the user sees their words
       setTimeout(() => {
         sendMessageFromVoice(text);
       }, 300);
@@ -124,8 +143,8 @@ const Chat = () => {
           role: 'assistant',
           content: assistantContent,
         });
-        // Auto-speak in voice mode
-        if (voiceConv.isVoiceMode) {
+        // Always speak responses unless muted
+        if (!isMuted) {
           voiceConv.speak(assistantContent);
         }
       }
@@ -265,8 +284,8 @@ const Chat = () => {
           role: 'assistant',
           content: assistantContent,
         });
-        // Auto-speak in voice mode
-        if (voiceConv.isVoiceMode) {
+        // Always speak responses unless muted
+        if (!isMuted) {
           voiceConv.speak(assistantContent);
         }
       }
@@ -306,11 +325,17 @@ const Chat = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {voiceConv.isSpeaking && (
-            <Button variant="ghost" size="icon" onClick={voiceConv.stopSpeaking} className="text-muted-foreground hover:text-destructive">
-              <VolumeX className="w-4 h-4" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (voiceConv.isSpeaking) voiceConv.stopSpeaking();
+              setIsMuted(prev => !prev);
+            }}
+            className={isMuted ? 'text-destructive hover:text-destructive/80' : 'text-primary hover:text-primary/80'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </Button>
           <Button
             variant={voiceConv.isVoiceMode ? 'default' : 'ghost'}
             size="icon"
