@@ -11,7 +11,7 @@ interface UseVoiceConversationOptions {
   onStop?: () => void;
 }
 
-export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }: UseVoiceConversationOptions) {
+export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, onWake, onStop }: UseVoiceConversationOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
