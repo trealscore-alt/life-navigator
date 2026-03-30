@@ -91,6 +91,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     recognition.onend = () => {
       setIsListening(false);
       recognitionRef.current = null;
+      // Auto-restart if we're in voice mode and not currently speaking
+      if (shouldRestartRef.current && !window.speechSynthesis?.speaking) {
+        setTimeout(() => startListening(), 300);
+      }
     };
 
     recognition.onerror = (e: any) => {
@@ -99,6 +103,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       }
       setIsListening(false);
       recognitionRef.current = null;
+      // Auto-restart on non-fatal errors in voice mode
+      if (shouldRestartRef.current && e.error === 'no-speech') {
+        setTimeout(() => startListening(), 300);
+      }
     };
 
     recognitionRef.current = recognition;
