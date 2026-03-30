@@ -27,6 +27,117 @@ const Chat = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const latestAssistantRef = useRef<string>('');
+
+  // Voice conversation
+  const voiceConv = useVoiceConversation({
+    onTranscript: (text) => {
+      setInput(text);
+      // Auto-send after a short delay so the user sees their words
+      setTimeout(() => {
+        sendMessageFromVoice(text);
+      }, 300);
+    },
+  });
+
+  const sendMessageFromVoice = async (text: string) => {
+    if (!text.trim() || isLoading || !user || !conversationId) return;
+    const userMsg: Message = { role: 'user', content: text.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setIsLoading(true);
+
+    await supabase.from('chat_messages').insert({
+      conversation_id: conversationId,
+      user_id: user.id,
+      role: 'user',
+      content: userMsg.content,
+    });
+
+    let assistantContent = '';
+    const upsertAssistant = (chunk: string) => {
+      assistantContent += chunk;
+      latestAssistantRef.current = assistantContent;
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === 'assistant') {
+          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+        }
+        return [...prev, { role: 'assistant', content: assistantContent }];
+      });
+    };
+
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          userId: user.id,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
+
+      if (!resp.body) throw new Error('No stream body');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line.startsWith(':') || line.trim() === '') continue;
+          if (!line.startsWith('data: ')) continue;
+          const json = line.slice(6).trim();
+          if (json === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(json);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) upsertAssistant(content);
+          } catch {
+            buffer = line + '\n' + buffer;
+            break;
+          }
+        }
+      }
+
+      if (assistantContent) {
+        await supabase.from('chat_messages').insert({
+          conversation_id: conversationId,
+          user_id: user.id,
+          role: 'assistant',
+          content: assistantContent,
+        });
+        // Auto-speak in voice mode
+        if (voiceConv.isVoiceMode) {
+          voiceConv.speak(assistantContent);
+        }
+      }
+    } catch (err: any) {
+      toast({
+        title: 'CLRK Error',
+        description: err.message || 'Failed to get response',
+        variant: 'destructive',
+      });
+    }
+
+    setIsLoading(false);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
