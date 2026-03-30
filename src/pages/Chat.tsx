@@ -490,6 +490,19 @@ const Chat = () => {
 
       {/* Input */}
       <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
+        {/* Pending image preview */}
+        {pendingImage && (
+          <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
+            <img src={pendingImage} alt="Pending capture" className="h-16 w-auto rounded-lg border border-primary/30" />
+            <div className="flex-1">
+              <p className="text-[10px] font-mono text-primary">📸 Image attached</p>
+              <p className="text-[9px] text-muted-foreground">CLRK will analyze this with your message</p>
+            </div>
+            <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => setPendingImage(null)}>
+              <span className="text-xs text-muted-foreground">✕</span>
+            </Button>
+          </div>
+        )}
         <div className="max-w-4xl mx-auto flex gap-2 sm:gap-3">
           <Button
             onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
@@ -500,18 +513,23 @@ const Chat = () => {
           >
             {voiceConv.isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
           </Button>
+          <CameraCapture
+            onCapture={handleCameraCapture}
+            isStreaming={cameraStreaming}
+            onStreamToggle={setCameraStreaming}
+          />
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
+            placeholder={pendingImage ? 'Ask CLRK about this image...' : voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
             className="min-h-[44px] max-h-32 resize-none bg-secondary/50 border-border/50 focus:border-primary font-sans text-sm"
             rows={1}
           />
           <Button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && !pendingImage) || isLoading}
             size="icon"
             className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_-3px_hsl(var(--neon-glow)/0.4)] flex-shrink-0"
           >
@@ -521,6 +539,11 @@ const Chat = () => {
         {voiceConv.isVoiceMode && (
           <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
             🎙️ VOICE MODE ACTIVE — Speak naturally, CLRK will respond aloud
+          </p>
+        )}
+        {cameraStreaming && (
+          <p className="text-center text-[10px] font-mono text-primary/60 mt-1">
+            📷 CAMERA ACTIVE — Capture a frame for CLRK to analyze
           </p>
         )}
       </div>
