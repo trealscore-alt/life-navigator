@@ -59,17 +59,33 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsListening(true);
     
     recognition.onresult = (event: any) => {
-      const text = event.results[0]?.[0]?.transcript?.trim();
-      if (text) {
-        onTranscript(text);
+      const text = event.results[event.results.length - 1]?.[0]?.transcript?.trim();
+      if (!text) return;
+
+      const lower = text.toLowerCase().replace(/[^a-z\s]/g, '');
+
+      // "stop" command — silence CLRK
+      if (/\b(stop|shut up|be quiet|silence|enough)\b/.test(lower)) {
+        stopSpeaking();
+        onStop?.();
+        // Keep listening for next command in voice mode
+        return;
       }
+
+      // "listen CLRK" wake command — activate voice mode if not already
+      if (/\blisten\s*(clrk|clark|clerk)\b/.test(lower) || /\bhey\s*(clrk|clark|clerk)\b/.test(lower)) {
+        onWake?.();
+        return;
+      }
+
+      onTranscript(text);
     };
 
     recognition.onend = () => {
