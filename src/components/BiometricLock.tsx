@@ -88,7 +88,7 @@ const ShootingStars = () => {
       }
 
       // Spawn shooting stars
-      if (Math.random() < 0.08) spawnStar();
+      if (Math.random() < 0.18) spawnStar();
 
       // Draw shooting stars
       for (let i = stars.length - 1; i >= 0; i--) {
