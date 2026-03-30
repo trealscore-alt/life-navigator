@@ -29,7 +29,7 @@ const ShootingStars = () => {
     const bgStars: { x: number; y: number; r: number; a: number; twinkle: number }[] = [];
 
     // Static background stars
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 500; i++) {
       bgStars.push({
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
@@ -88,7 +88,7 @@ const ShootingStars = () => {
       }
 
       // Spawn shooting stars
-      if (Math.random() < 0.08) spawnStar();
+      if (Math.random() < 0.18) spawnStar();
 
       // Draw shooting stars
       for (let i = stars.length - 1; i >= 0; i--) {
