@@ -248,11 +248,14 @@ const Chat = () => {
   }, [user]);
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !conversationId) return;
+    if ((!input.trim() && !pendingImage) || isLoading || !user || !conversationId) return;
 
-    const userMsg: Message = { role: 'user', content: input.trim() };
+    const currentImage = pendingImage;
+    const content = input.trim() || (currentImage ? 'What do you see in this image? Analyze it and help me.' : '');
+    const userMsg: Message = { role: 'user', content, imageBase64: currentImage || undefined };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setPendingImage(null);
     setIsLoading(true);
 
     // Save user message
@@ -260,7 +263,7 @@ const Chat = () => {
       conversation_id: conversationId,
       user_id: user.id,
       role: 'user',
-      content: userMsg.content,
+      content: currentImage ? `[Image attached] ${content}` : content,
     });
 
     let assistantContent = '';
@@ -284,7 +287,7 @@ const Chat = () => {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: voiceConv.isVoiceMode,
         }),
