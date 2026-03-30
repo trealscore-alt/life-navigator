@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import ClrkActivityFeed from '@/components/ClrkActivityFeed';
 import ClrkSystemStatus from '@/components/ClrkSystemStatus';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import {
   MessageSquare, Target, LogOut, Zap, TrendingUp,
   Heart, Brain, DollarSign, Briefcase, Activity, Settings,
@@ -30,6 +32,8 @@ interface Domain { domain: string; priority: number; is_active: boolean; }
 const Dashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  usePushNotifications(user?.id);
+  useBackgroundTasks(user?.id);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
