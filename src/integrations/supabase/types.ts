@@ -285,6 +285,110 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_posts: {
+        Row: {
+          auto_approved: boolean | null
+          content: string
+          created_at: string
+          engagement_data: Json | null
+          id: string
+          media_urls: string[] | null
+          metadata: Json | null
+          platform: string
+          published_at: string | null
+          scheduled_for: string | null
+          social_account_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_approved?: boolean | null
+          content: string
+          created_at?: string
+          engagement_data?: Json | null
+          id?: string
+          media_urls?: string[] | null
+          metadata?: Json | null
+          platform: string
+          published_at?: string | null
+          scheduled_for?: string | null
+          social_account_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_approved?: boolean | null
+          content?: string
+          created_at?: string
+          engagement_data?: Json | null
+          id?: string
+          media_urls?: string[] | null
+          metadata?: Json | null
+          platform?: string
+          published_at?: string | null
+          scheduled_for?: string | null
+          social_account_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_posts_social_account_id_fkey"
+            columns: ["social_account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_accounts: {
+        Row: {
+          access_token: string | null
+          account_handle: string | null
+          account_name: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          platform: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          account_handle?: string | null
+          account_name: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          platform: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          account_handle?: string | null
+          account_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          platform?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_domains: {
         Row: {
           created_at: string
