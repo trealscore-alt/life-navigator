@@ -299,13 +299,30 @@ const Chat = () => {
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
             <p className="text-[10px] font-mono text-muted-foreground">
-              {isLoading ? 'Processing...' : 'Ready'}
+              {voiceConv.isSpeaking ? 'Speaking...' : voiceConv.isListening ? 'Listening...' : isLoading ? 'Processing...' : 'Ready'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-          <div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-primary animate-pulse-glow'}`} />
-          {isLoading ? 'THINKING' : 'ONLINE'}
+        <div className="flex items-center gap-2">
+          {voiceConv.isSpeaking && (
+            <Button variant="ghost" size="icon" onClick={voiceConv.stopSpeaking} className="text-muted-foreground hover:text-destructive">
+              <VolumeX className="w-4 h-4" />
+            </Button>
+          )}
+          <Button
+            variant={voiceConv.isVoiceMode ? 'default' : 'ghost'}
+            size="icon"
+            onClick={voiceConv.toggleVoiceMode}
+            className={voiceConv.isVoiceMode 
+              ? 'bg-primary text-primary-foreground shadow-[0_0_15px_-3px_hsl(var(--neon-glow)/0.5)] animate-pulse' 
+              : 'text-muted-foreground hover:text-primary'}
+          >
+            {voiceConv.isVoiceMode ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </Button>
+          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+            <div className={`w-2 h-2 rounded-full ${voiceConv.isListening ? 'bg-primary animate-pulse-glow' : isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-primary animate-pulse-glow'}`} />
+            {voiceConv.isListening ? 'LISTENING' : isLoading ? 'THINKING' : 'ONLINE'}
+          </div>
         </div>
       </header>
 
