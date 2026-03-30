@@ -5,6 +5,10 @@ interface UseVoiceConversationOptions {
   onTranscript: (text: string) => void;
   onSpeakStart?: () => void;
   onSpeakEnd?: () => void;
+  /** Called when user says a wake phrase like "listen CLRK" */
+  onWake?: () => void;
+  /** Called when user says "stop" to silence CLRK */
+  onStop?: () => void;
 }
 
 export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd }: UseVoiceConversationOptions) {
