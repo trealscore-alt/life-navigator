@@ -251,7 +251,7 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             initial={{ opacity: 1, scale: 0.3 }}
             animate={{ opacity: 0, scale: 3 }}
-            transition={{ duration: 1.2, ease: 'easeOut' }}
+            transition={{ duration: 3, ease: 'easeOut' }}
           >
             <div
               className="w-20 h-20 rounded-full"
@@ -278,7 +278,7 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
                   opacity: 0,
                   scale: 0,
                 }}
-                transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
+                transition={{ duration: 2, delay: 1, ease: 'easeOut' }}
               />
             );
           })}
@@ -288,7 +288,7 @@ const BiometricLock = ({ onUnlock, userName }: BiometricLockProps) => {
             className="text-5xl font-mono font-bold neon-text tracking-wider"
             initial={{ scale: 0, opacity: 0, filter: 'brightness(3) blur(8px)' }}
             animate={{ scale: 1, opacity: 1, filter: 'brightness(1) blur(0px)' }}
-            transition={{ duration: 0.9, delay: 0.3, type: 'spring', stiffness: 120, damping: 12 }}
+            transition={{ duration: 2, delay: 0.8, type: 'spring', stiffness: 80, damping: 14 }}
           >
             CLRK
           </motion.h1>
