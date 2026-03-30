@@ -89,7 +89,7 @@ const Dashboard = () => {
 
       {/* Top Bar */}
       <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
-        <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="font-mono text-xl neon-text font-bold tracking-wider">CLRK</h1>
             <div className="hidden md:flex items-center gap-3 text-[10px] font-mono text-muted-foreground border-l border-border/30 pl-4 ml-2">
@@ -113,7 +113,7 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-[1400px] mx-auto px-6 py-6 space-y-6">
+      <main className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Greeting + Quick Nav */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
@@ -124,7 +124,7 @@ const Dashboard = () => {
               CLRK is actively monitoring {domains.length} domain{domains.length !== 1 ? 's' : ''} • {goals.length} goal{goals.length !== 1 ? 's' : ''} tracked • All systems operational
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Link to="/live">
               <Button size="sm" className="font-mono text-xs bg-primary text-primary-foreground shadow-[0_0_15px_hsl(var(--primary)/0.3)]">
                 <Eye className="w-3.5 h-3.5 mr-1.5" /> Live Mode
@@ -132,17 +132,17 @@ const Dashboard = () => {
             </Link>
             <Link to="/chat">
               <Button size="sm" variant="outline" className="font-mono text-xs">
-                <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> Talk to CLRK
+                <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> <span className="hidden sm:inline">Talk to</span> CLRK
               </Button>
             </Link>
             <Link to="/agents">
               <Button size="sm" variant="outline" className="font-mono text-xs">
-                <Radio className="w-3.5 h-3.5 mr-1.5" /> Agents
+                <Radio className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Agents</span>
               </Button>
             </Link>
             <Link to="/devices">
               <Button size="sm" variant="outline" className="font-mono text-xs">
-                <Bluetooth className="w-3.5 h-3.5 mr-1.5" /> Devices
+                <Bluetooth className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Devices</span>
               </Button>
             </Link>
           </div>

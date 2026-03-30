@@ -162,7 +162,7 @@ const Onboarding = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
-              className="glass-card neon-border rounded-xl p-8"
+              className="glass-card neon-border rounded-xl p-4 sm:p-8"
             >
               {step === 0 && (
                 <div className="space-y-6">
