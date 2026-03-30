@@ -15,6 +15,7 @@ interface Message {
   id?: string;
   role: 'user' | 'assistant';
   content: string;
+  imageBase64?: string; // For displaying captured images in chat
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-chat`;
