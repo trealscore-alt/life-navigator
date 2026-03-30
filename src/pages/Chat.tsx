@@ -107,17 +107,20 @@ const Chat = () => {
     toast({ title: '📸 Image attached', description: 'Add a message or send directly — CLRK will analyze what you captured.' });
   };
 
+  const sendMessageFromVoice = async (text: string) => {
     if (!text.trim() || isLoading || !user || !conversationId) return;
-    const userMsg: Message = { role: 'user', content: text.trim() };
+    const currentImage = pendingImage;
+    const userMsg: Message = { role: 'user', content: text.trim(), imageBase64: currentImage || undefined };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setPendingImage(null);
     setIsLoading(true);
 
     await supabase.from('chat_messages').insert({
       conversation_id: conversationId,
       user_id: user.id,
       role: 'user',
-      content: userMsg.content,
+      content: currentImage ? `[Image attached] ${userMsg.content}` : userMsg.content,
     });
 
     let assistantContent = '';
@@ -141,7 +144,7 @@ const Chat = () => {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: true,
         }),
