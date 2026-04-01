@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'CLRK',
   webDir: 'dist',
   server: {
-    url: 'https://7212b4ec-51dc-4a32-bebe-800acbffbd23.lovableproject.com?forceHideBadge=true',
+    url: 'https://locus-life-aid.lovable.app?forceHideBadge=true',
     cleartext: true,
   },
   plugins: {
