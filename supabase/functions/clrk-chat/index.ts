@@ -322,7 +322,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, userId, voiceMode } = await req.json();
+    const { messages, userId, voiceMode, bluetoothState } = await req.json();
 
     // Detect if any message contains image content
     const hasImages = messages.some((m: any) =>
