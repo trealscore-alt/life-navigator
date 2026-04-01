@@ -36,6 +36,87 @@ const Chat = () => {
   const latestAssistantRef = useRef<string>('');
   const ttsUnlockedRef = useRef(false);
 
+  // Bluetooth integration
+  const bluetooth = useBluetooth();
+
+  // Build Bluetooth state snapshot for the API
+  const getBluetoothState = useCallback(() => {
+    const latestByType: Record<string, any> = {};
+    for (const r of bluetooth.liveReadings) {
+      const key = `${r.deviceId}:${r.dataType}`;
+      if (!latestByType[key]) latestByType[key] = r;
+    }
+    return {
+      devices: bluetooth.devices.map(d => ({
+        deviceId: d.deviceId,
+        name: d.name,
+        rssi: d.rssi,
+        connected: d.connected,
+        serviceNames: d.serviceNames,
+      })),
+      scanning: bluetooth.scanning,
+      liveReadings: Object.values(latestByType).slice(0, 15).map((r: any) => ({
+        deviceName: r.deviceName,
+        dataType: r.dataType,
+        value: r.value,
+        unit: r.unit,
+        serviceName: r.serviceName,
+      })),
+      monitoring: Array.from(bluetooth.monitoring),
+    };
+  }, [bluetooth.devices, bluetooth.scanning, bluetooth.liveReadings, bluetooth.monitoring]);
+
+  // Parse and execute BT commands from CLRK's response
+  const executeBluetoothCommands = useCallback(async (text: string) => {
+    const commands = text.match(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]/g);
+    if (!commands) return;
+
+    for (const cmd of commands) {
+      const match = cmd.match(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]/);
+      if (!match) continue;
+      const [, action, deviceId] = match;
+
+      try {
+        switch (action) {
+          case 'SCAN':
+            toast({ title: '🔍 CLRK is scanning for devices...' });
+            await bluetooth.startScan(15000);
+            break;
+          case 'STOP_SCAN':
+            await bluetooth.stopScan();
+            break;
+          case 'CONNECT':
+            if (deviceId) {
+              toast({ title: `⚡ CLRK is connecting to device...` });
+              await bluetooth.connectDevice(deviceId);
+            }
+            break;
+          case 'DISCONNECT':
+            if (deviceId) {
+              await bluetooth.disconnectDevice(deviceId);
+              toast({ title: `Disconnected by CLRK` });
+            }
+            break;
+          case 'MONITOR':
+            if (deviceId) {
+              await bluetooth.startMonitoring(deviceId);
+              toast({ title: `📡 CLRK started monitoring device` });
+            }
+            break;
+          case 'STOP_MONITOR':
+            if (deviceId) await bluetooth.stopMonitoring(deviceId);
+            break;
+        }
+      } catch (err: any) {
+        console.error(`BT command ${action} failed:`, err);
+      }
+    }
+  }, [bluetooth, toast]);
+
+  // Strip BT command tokens from displayed text
+  const stripBtCommands = (text: string) =>
+    text.replace(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]\n?/g, '').trim();
+
   // Unlock TTS on first user interaction (required by browsers)
   useEffect(() => {
     const unlock = () => {
