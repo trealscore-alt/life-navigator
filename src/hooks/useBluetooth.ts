@@ -119,15 +119,20 @@ export function useBluetooth() {
 
   useEffect(() => { setIsNative(Capacitor.isNativePlatform()); }, []);
 
+  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+
   const initialize = useCallback(async () => {
     try {
       setError(null);
-      await BleClient.initialize({ androidNeverForLocation: true });
+      if (isNative) {
+        await BleClient.initialize({ androidNeverForLocation: true });
+      }
+      // Web Bluetooth doesn't need initialization
       setInitialized(true);
     } catch (err: any) {
       setError(err.message || 'Failed to initialize Bluetooth');
     }
-  }, []);
+  }, [isNative]);
 
   const addReading = useCallback((reading: DeviceReading) => {
     setLiveReadings(prev => [reading, ...prev].slice(0, 500));
