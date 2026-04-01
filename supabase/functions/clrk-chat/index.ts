@@ -371,6 +371,22 @@ serve(async (req) => {
 
     let systemPrompt = buildSystemPrompt(userContext);
 
+    // Inject live Bluetooth device state
+    if (bluetoothState) {
+      const { devices = [], scanning = false, liveReadings = [], monitoring = [] } = bluetoothState;
+      const deviceList = devices.length > 0
+        ? devices.map((d: any) => `  - ${d.name || 'Unknown'} (ID: ${d.deviceId}) | RSSI: ${d.rssi ?? '?'} | Connected: ${d.connected} | Services: ${d.serviceNames?.join(', ') || 'unknown'}`).join('\n')
+        : '  No devices discovered yet.';
+      const readingsList = liveReadings.length > 0
+        ? liveReadings.slice(0, 15).map((r: any) => `  - ${r.deviceName || 'Unknown'}: ${r.dataType} = ${r.value} ${r.unit} (${r.serviceName})`).join('\n')
+        : '  No live readings.';
+      systemPrompt += `\n\n## LIVE BLUETOOTH STATE (real-time from user's device)
+- Scanning: ${scanning}
+- Monitoring: ${monitoring.join(', ') || 'none'}
+- Discovered Devices:\n${deviceList}
+- Live Readings:\n${readingsList}`;
+    }
+
     // In voice mode, make CLRK conversational and concise
     if (voiceMode) {
       systemPrompt += `
