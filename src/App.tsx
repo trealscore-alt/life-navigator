@@ -13,6 +13,7 @@ import DeviceHub from "./pages/DeviceHub";
 import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
 import SocialMedia from "./pages/SocialMedia";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
