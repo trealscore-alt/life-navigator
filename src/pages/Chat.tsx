@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -7,9 +7,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image, Bluetooth } from 'lucide-react';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useVoiceConversation } from '@/hooks/useVoiceConversation';
+import { useBluetooth } from '@/hooks/useBluetooth';
 
 interface Message {
   id?: string;
@@ -34,6 +35,87 @@ const Chat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const latestAssistantRef = useRef<string>('');
   const ttsUnlockedRef = useRef(false);
+
+  // Bluetooth integration
+  const bluetooth = useBluetooth();
+
+  // Build Bluetooth state snapshot for the API
+  const getBluetoothState = useCallback(() => {
+    const latestByType: Record<string, any> = {};
+    for (const r of bluetooth.liveReadings) {
+      const key = `${r.deviceId}:${r.dataType}`;
+      if (!latestByType[key]) latestByType[key] = r;
+    }
+    return {
+      devices: bluetooth.devices.map(d => ({
+        deviceId: d.deviceId,
+        name: d.name,
+        rssi: d.rssi,
+        connected: d.connected,
+        serviceNames: d.serviceNames,
+      })),
+      scanning: bluetooth.scanning,
+      liveReadings: Object.values(latestByType).slice(0, 15).map((r: any) => ({
+        deviceName: r.deviceName,
+        dataType: r.dataType,
+        value: r.value,
+        unit: r.unit,
+        serviceName: r.serviceName,
+      })),
+      monitoring: Array.from(bluetooth.monitoring),
+    };
+  }, [bluetooth.devices, bluetooth.scanning, bluetooth.liveReadings, bluetooth.monitoring]);
+
+  // Parse and execute BT commands from CLRK's response
+  const executeBluetoothCommands = useCallback(async (text: string) => {
+    const commands = text.match(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]/g);
+    if (!commands) return;
+
+    for (const cmd of commands) {
+      const match = cmd.match(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]/);
+      if (!match) continue;
+      const [, action, deviceId] = match;
+
+      try {
+        switch (action) {
+          case 'SCAN':
+            toast({ title: '🔍 CLRK is scanning for devices...' });
+            await bluetooth.startScan(15000);
+            break;
+          case 'STOP_SCAN':
+            await bluetooth.stopScan();
+            break;
+          case 'CONNECT':
+            if (deviceId) {
+              toast({ title: `⚡ CLRK is connecting to device...` });
+              await bluetooth.connectDevice(deviceId);
+            }
+            break;
+          case 'DISCONNECT':
+            if (deviceId) {
+              await bluetooth.disconnectDevice(deviceId);
+              toast({ title: `Disconnected by CLRK` });
+            }
+            break;
+          case 'MONITOR':
+            if (deviceId) {
+              await bluetooth.startMonitoring(deviceId);
+              toast({ title: `📡 CLRK started monitoring device` });
+            }
+            break;
+          case 'STOP_MONITOR':
+            if (deviceId) await bluetooth.stopMonitoring(deviceId);
+            break;
+        }
+      } catch (err: any) {
+        console.error(`BT command ${action} failed:`, err);
+      }
+    }
+  }, [bluetooth, toast]);
+
+  // Strip BT command tokens from displayed text
+  const stripBtCommands = (text: string) =>
+    text.replace(/\[BT:(SCAN|STOP_SCAN|CONNECT|DISCONNECT|MONITOR|STOP_MONITOR)(?::([^\]]+))?\]\n?/g, '').trim();
 
   // Unlock TTS on first user interaction (required by browsers)
   useEffect(() => {
@@ -147,6 +229,7 @@ const Chat = () => {
           messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: true,
+          bluetoothState: getBluetoothState(),
         }),
       });
 
@@ -187,15 +270,19 @@ const Chat = () => {
       }
 
       if (assistantContent) {
+        // Execute any Bluetooth commands
+        await executeBluetoothCommands(assistantContent);
+        const cleanContent = stripBtCommands(assistantContent);
         await supabase.from('chat_messages').insert({
           conversation_id: conversationId,
           user_id: user.id,
           role: 'assistant',
-          content: assistantContent,
+          content: cleanContent,
         });
-        // Always speak responses unless muted
+        // Update displayed message with clean content
+        setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'assistant' ? { ...m, content: cleanContent } : m));
         if (!isMuted) {
-          voiceConv.speak(assistantContent);
+          voiceConv.speak(cleanContent);
         }
       }
     } catch (err: any) {
@@ -290,6 +377,7 @@ const Chat = () => {
           messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: voiceConv.isVoiceMode,
+          bluetoothState: getBluetoothState(),
         }),
       });
 
@@ -331,15 +419,17 @@ const Chat = () => {
 
       // Save assistant message
       if (assistantContent) {
+        await executeBluetoothCommands(assistantContent);
+        const cleanContent = stripBtCommands(assistantContent);
         await supabase.from('chat_messages').insert({
           conversation_id: conversationId,
           user_id: user.id,
           role: 'assistant',
-          content: assistantContent,
+          content: cleanContent,
         });
-        // Always speak responses unless muted
+        setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'assistant' ? { ...m, content: cleanContent } : m));
         if (!isMuted) {
-          voiceConv.speak(assistantContent);
+          voiceConv.speak(cleanContent);
         }
       }
     } catch (err: any) {
@@ -372,8 +462,14 @@ const Chat = () => {
           </Link>
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
-            <p className="text-[10px] font-mono text-muted-foreground">
+            <p className="text-[10px] font-mono text-muted-foreground flex items-center gap-2">
               {voiceConv.isSpeaking ? 'Speaking...' : voiceConv.isListening ? 'Listening...' : isLoading ? 'Processing...' : 'Ready'}
+              {bluetooth.devices.some(d => d.connected) && (
+                <span className="flex items-center gap-1 text-primary">
+                  <Bluetooth className="w-3 h-3" />
+                  {bluetooth.devices.filter(d => d.connected).length} device{bluetooth.devices.filter(d => d.connected).length !== 1 ? 's' : ''}
+                </span>
+              )}
             </p>
           </div>
         </div>
