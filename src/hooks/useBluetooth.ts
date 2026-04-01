@@ -119,15 +119,20 @@ export function useBluetooth() {
 
   useEffect(() => { setIsNative(Capacitor.isNativePlatform()); }, []);
 
+  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in (navigator as any);
+
   const initialize = useCallback(async () => {
     try {
       setError(null);
-      await BleClient.initialize({ androidNeverForLocation: true });
+      if (isNative) {
+        await BleClient.initialize({ androidNeverForLocation: true });
+      }
+      // Web Bluetooth doesn't need initialization
       setInitialized(true);
     } catch (err: any) {
       setError(err.message || 'Failed to initialize Bluetooth');
     }
-  }, []);
+  }, [isNative]);
 
   const addReading = useCallback((reading: DeviceReading) => {
     setLiveReadings(prev => [reading, ...prev].slice(0, 500));
@@ -235,10 +240,56 @@ export function useBluetooth() {
     setMonitoring(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
   }, []);
 
+  const webBluetoothScan = useCallback(async () => {
+    if (!hasWebBluetooth) {
+      setError('Bluetooth is not supported in this browser.');
+      setScanning(false);
+      return;
+    }
+    try {
+      // Web Bluetooth uses requestDevice (user picks from browser dialog)
+      const bt = (navigator as any).bluetooth;
+      const device = await bt.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: Object.keys(KNOWN_SERVICES).map(k => k.toLowerCase()),
+      });
+      const newDevice: BluetoothDevice = {
+        deviceId: device.id,
+        name: device.name || null,
+        rssi: null,
+        connected: false,
+        services: [],
+        serviceNames: [],
+        lastSeen: new Date(),
+      };
+      setDevices(prev => {
+        const existing = prev.findIndex(d => d.deviceId === device.id);
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = { ...updated[existing], ...newDevice };
+          return updated;
+        }
+        return [...prev, newDevice];
+      });
+    } catch (err: any) {
+      if (err.name !== 'NotFoundError') { // user cancelled
+        setError(err.message || 'Scan failed');
+      }
+    }
+    setScanning(false);
+  }, [hasWebBluetooth]);
+
   const startScan = useCallback(async (durationMs = 10000) => {
     if (!initialized) await initialize();
     setScanning(true);
     setError(null);
+
+    // Use Web Bluetooth API for browsers, Capacitor BLE for native
+    if (!isNative) {
+      await webBluetoothScan();
+      return;
+    }
+
     try {
       const enabled = await BleClient.isEnabled();
       if (!enabled) { setError('Bluetooth is turned off.'); setScanning(false); return; }
@@ -266,7 +317,7 @@ export function useBluetooth() {
 
       scanTimeoutRef.current = setTimeout(() => stopScan(), durationMs);
     } catch (err: any) { setError(err.message || 'Scan failed'); setScanning(false); }
-  }, [initialized, initialize]);
+  }, [initialized, initialize, isNative, webBluetoothScan]);
 
   const stopScan = useCallback(async () => {
     try { await BleClient.stopLEScan(); } catch { /* ok */ }
