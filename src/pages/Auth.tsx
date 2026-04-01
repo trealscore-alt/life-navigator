@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import BiometricLock from '@/components/BiometricLock';
+import { ArrowLeft } from 'lucide-react';
 
 const Auth = () => {
   const { user, loading, signIn, signUp } = useAuth();
