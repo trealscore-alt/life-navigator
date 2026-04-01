@@ -248,7 +248,8 @@ export function useBluetooth() {
     }
     try {
       // Web Bluetooth uses requestDevice (user picks from browser dialog)
-      const device = await navigator.bluetooth.requestDevice({
+      const bt = (navigator as any).bluetooth;
+      const device = await bt.requestDevice({
         acceptAllDevices: true,
         optionalServices: Object.keys(KNOWN_SERVICES).map(k => k.toLowerCase()),
       });
