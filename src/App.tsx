@@ -13,6 +13,7 @@ import DeviceHub from "./pages/DeviceHub";
 import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
 import SocialMedia from "./pages/SocialMedia";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Navigate to="/auth" replace />} />
     <Route path="/auth" element={<Auth />} />
+    <Route path="/reset-password" element={<ResetPassword />} />
     <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
     <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

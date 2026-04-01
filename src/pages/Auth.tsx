@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import BiometricLock from '@/components/BiometricLock';
+import { ArrowLeft } from 'lucide-react';
 
 const Auth = () => {
   const { user, loading, signIn, signUp } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -99,47 +102,69 @@ const Auth = () => {
         </div>
 
         <div className="glass-card neon-border rounded-xl p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Email</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="agent@clrk.io"
-                className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Password</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
-                required
-                minLength={6}
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_hsl(var(--neon-glow)/0.5)]"
-            >
-              {submitting ? 'Processing...' : isSignUp ? 'Initialize Agent' : 'Access System'}
-            </Button>
-          </form>
+          {isForgotPassword ? (
+            <ForgotPasswordForm
+              forgotEmail={forgotEmail}
+              setForgotEmail={setForgotEmail}
+              onBack={() => setIsForgotPassword(false)}
+              toast={toast}
+            />
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Email</label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="agent@clrk.io"
+                    className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Password</label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+                    required
+                    minLength={6}
+                  />
+                </div>
+                {!isSignUp && (
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPassword(true)}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors font-mono"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_hsl(var(--neon-glow)/0.5)]"
+                >
+                  {submitting ? 'Processing...' : isSignUp ? 'Initialize Agent' : 'Access System'}
+                </Button>
+              </form>
 
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors font-mono"
-            >
-              {isSignUp ? 'Already initialized? Sign in' : 'New agent? Create account'}
-            </button>
-          </div>
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors font-mono"
+                >
+                  {isSignUp ? 'Already initialized? Sign in' : 'New agent? Create account'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-8 flex items-center justify-center gap-2 text-xs font-mono text-muted-foreground">
@@ -149,6 +174,71 @@ const Auth = () => {
           <span>v1.0.0</span>
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+const ForgotPasswordForm = ({
+  forgotEmail,
+  setForgotEmail,
+  onBack,
+  toast,
+}: {
+  forgotEmail: string;
+  setForgotEmail: (v: string) => void;
+  onBack: () => void;
+  toast: any;
+}) => {
+  const [sending, setSending] = useState(false);
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setSending(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Recovery link sent', description: 'Check your email for a password reset link.' });
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-primary transition-colors"
+      >
+        <ArrowLeft className="w-3 h-3" /> Back to sign in
+      </button>
+      <p className="text-sm text-foreground/80 font-mono">
+        Enter your email and we'll send a recovery link.
+      </p>
+      <form onSubmit={handleForgot} className="space-y-5">
+        <div>
+          <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Email</label>
+          <Input
+            type="email"
+            value={forgotEmail}
+            onChange={(e) => setForgotEmail(e.target.value)}
+            placeholder="agent@clrk.io"
+            className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+            required
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={sending}
+          className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_hsl(var(--neon-glow)/0.5)]"
+        >
+          {sending ? 'Sending...' : 'Send Recovery Link'}
+        </Button>
+      </form>
     </div>
   );
 };
