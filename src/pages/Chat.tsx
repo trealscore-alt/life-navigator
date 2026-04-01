@@ -419,15 +419,17 @@ const Chat = () => {
 
       // Save assistant message
       if (assistantContent) {
+        await executeBluetoothCommands(assistantContent);
+        const cleanContent = stripBtCommands(assistantContent);
         await supabase.from('chat_messages').insert({
           conversation_id: conversationId,
           user_id: user.id,
           role: 'assistant',
-          content: assistantContent,
+          content: cleanContent,
         });
-        // Always speak responses unless muted
+        setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'assistant' ? { ...m, content: cleanContent } : m));
         if (!isMuted) {
-          voiceConv.speak(assistantContent);
+          voiceConv.speak(cleanContent);
         }
       }
     } catch (err: any) {
