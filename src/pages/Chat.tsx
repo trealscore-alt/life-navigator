@@ -377,6 +377,7 @@ const Chat = () => {
           messages: buildApiMessages([...messages, userMsg]),
           userId: user.id,
           voiceMode: voiceConv.isVoiceMode,
+          bluetoothState: getBluetoothState(),
         }),
       });
 
