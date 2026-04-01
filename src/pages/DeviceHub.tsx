@@ -232,8 +232,8 @@ const DeviceHub = () => {
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-mono text-sm text-yellow-400">Native Platform Required</p>
-                <p className="text-xs text-muted-foreground mt-1">Bluetooth requires a native app via Capacitor. Export to GitHub, add iOS/Android, and run on a real device.</p>
+                <p className="font-mono text-sm text-yellow-400">Web Preview Mode</p>
+                <p className="text-xs text-muted-foreground mt-1">Full Bluetooth requires the native app. Scanning is available but some features may be limited.</p>
               </div>
             </div>
           </motion.div>
