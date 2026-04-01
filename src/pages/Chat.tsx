@@ -462,8 +462,14 @@ const Chat = () => {
           </Link>
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
-            <p className="text-[10px] font-mono text-muted-foreground">
+            <p className="text-[10px] font-mono text-muted-foreground flex items-center gap-2">
               {voiceConv.isSpeaking ? 'Speaking...' : voiceConv.isListening ? 'Listening...' : isLoading ? 'Processing...' : 'Ready'}
+              {bluetooth.devices.some(d => d.connected) && (
+                <span className="flex items-center gap-1 text-primary">
+                  <Bluetooth className="w-3 h-3" />
+                  {bluetooth.devices.filter(d => d.connected).length} device{bluetooth.devices.filter(d => d.connected).length !== 1 ? 's' : ''}
+                </span>
+              )}
             </p>
           </div>
         </div>
