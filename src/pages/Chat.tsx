@@ -36,8 +36,14 @@ const Chat = () => {
   const latestAssistantRef = useRef<string>('');
   const ttsUnlockedRef = useRef(false);
 
-  // Bluetooth integration
+  // Bluetooth integration — auto-initialize on native
   const bluetooth = useBluetooth();
+
+  useEffect(() => {
+    if (bluetooth.isNative && !bluetooth.initialized) {
+      bluetooth.initialize();
+    }
+  }, [bluetooth.isNative, bluetooth.initialized, bluetooth.initialize]);
 
   // Build Bluetooth state snapshot for the API
   const getBluetoothState = useCallback(() => {
