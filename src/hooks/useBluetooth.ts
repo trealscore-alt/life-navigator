@@ -240,10 +240,55 @@ export function useBluetooth() {
     setMonitoring(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
   }, []);
 
+  const webBluetoothScan = useCallback(async () => {
+    if (!hasWebBluetooth) {
+      setError('Bluetooth is not supported in this browser.');
+      setScanning(false);
+      return;
+    }
+    try {
+      // Web Bluetooth uses requestDevice (user picks from browser dialog)
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: Object.keys(KNOWN_SERVICES).map(k => k.toLowerCase()),
+      });
+      const newDevice: BluetoothDevice = {
+        deviceId: device.id,
+        name: device.name || null,
+        rssi: null,
+        connected: false,
+        services: [],
+        serviceNames: [],
+        lastSeen: new Date(),
+      };
+      setDevices(prev => {
+        const existing = prev.findIndex(d => d.deviceId === device.id);
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = { ...updated[existing], ...newDevice };
+          return updated;
+        }
+        return [...prev, newDevice];
+      });
+    } catch (err: any) {
+      if (err.name !== 'NotFoundError') { // user cancelled
+        setError(err.message || 'Scan failed');
+      }
+    }
+    setScanning(false);
+  }, [hasWebBluetooth]);
+
   const startScan = useCallback(async (durationMs = 10000) => {
     if (!initialized) await initialize();
     setScanning(true);
     setError(null);
+
+    // Use Web Bluetooth API for browsers, Capacitor BLE for native
+    if (!isNative) {
+      await webBluetoothScan();
+      return;
+    }
+
     try {
       const enabled = await BleClient.isEnabled();
       if (!enabled) { setError('Bluetooth is turned off.'); setScanning(false); return; }
@@ -271,7 +316,7 @@ export function useBluetooth() {
 
       scanTimeoutRef.current = setTimeout(() => stopScan(), durationMs);
     } catch (err: any) { setError(err.message || 'Scan failed'); setScanning(false); }
-  }, [initialized, initialize]);
+  }, [initialized, initialize, isNative, webBluetoothScan]);
 
   const stopScan = useCallback(async () => {
     try { await BleClient.stopLEScan(); } catch { /* ok */ }
