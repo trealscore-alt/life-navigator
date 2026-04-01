@@ -178,6 +178,71 @@ const Auth = () => {
   );
 };
 
+const ForgotPasswordForm = ({
+  forgotEmail,
+  setForgotEmail,
+  onBack,
+  toast,
+}: {
+  forgotEmail: string;
+  setForgotEmail: (v: string) => void;
+  onBack: () => void;
+  toast: any;
+}) => {
+  const [sending, setSending] = useState(false);
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setSending(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Recovery link sent', description: 'Check your email for a password reset link.' });
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-primary transition-colors"
+      >
+        <ArrowLeft className="w-3 h-3" /> Back to sign in
+      </button>
+      <p className="text-sm text-foreground/80 font-mono">
+        Enter your email and we'll send a recovery link.
+      </p>
+      <form onSubmit={handleForgot} className="space-y-5">
+        <div>
+          <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Email</label>
+          <Input
+            type="email"
+            value={forgotEmail}
+            onChange={(e) => setForgotEmail(e.target.value)}
+            placeholder="agent@clrk.io"
+            className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+            required
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={sending}
+          className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_hsl(var(--neon-glow)/0.5)]"
+        >
+          {sending ? 'Sending...' : 'Send Recovery Link'}
+        </Button>
+      </form>
+    </div>
+  );
+};
+
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center">
     <div className="text-center">
