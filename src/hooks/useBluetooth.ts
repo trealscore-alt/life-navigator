@@ -119,7 +119,7 @@ export function useBluetooth() {
 
   useEffect(() => { setIsNative(Capacitor.isNativePlatform()); }, []);
 
-  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in (navigator as any);
 
   const initialize = useCallback(async () => {
     try {
