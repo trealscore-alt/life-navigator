@@ -1,5 +1,4 @@
-// Thin LLM client. Anthropic Claude is the preferred agent brain; the Lovable
-// gateway (Gemini) is the no-tools fallback when ANTHROPIC_API_KEY isn't set.
+// Thin LLM client. Anthropic Claude is the structured-tool agent brain.
 //
 // Anthropic's Messages API is what we expose throughout — even when the user
 // has Lovable-only configured, we shape the response to look like Anthropic's
@@ -50,6 +49,9 @@ export function pickProvider(): "anthropic" | "lovable" {
 
 export async function chat(opts: LLMOptions): Promise<ModelResponse> {
   const provider = opts.provider ?? pickProvider();
+  if (provider !== "anthropic" && opts.tools && opts.tools.length > 0) {
+    throw new Error("Structured CLRK tools require ANTHROPIC_API_KEY. No fallback model is allowed for tool-calling agent mode.");
+  }
   return provider === "anthropic" ? chatAnthropic(opts) : chatLovable(opts);
 }
 
@@ -100,7 +102,7 @@ async function chatAnthropic(opts: LLMOptions): Promise<ModelResponse> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lovable gateway (OpenAI-format) — no-tools fallback
+// Lovable gateway (OpenAI-format) — text-only legacy/live path
 // We still translate the response into Anthropic's content-block shape so the
 // agent loop is provider-agnostic.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +113,7 @@ async function chatLovable(opts: LLMOptions): Promise<ModelResponse> {
   const model = opts.lovableModel ?? DEFAULT_LOVABLE_MODEL;
 
   if (opts.tools && opts.tools.length > 0) {
-    console.warn("[llm] Tools requested but Lovable fallback is no-tools mode. Set ANTHROPIC_API_KEY for tool calling.");
+    throw new Error("Lovable text path cannot execute tools. Set ANTHROPIC_API_KEY for CLRK agent mode.");
   }
 
   // Translate Anthropic message shape → OpenAI message shape.
@@ -129,7 +131,7 @@ async function chatLovable(opts: LLMOptions): Promise<ModelResponse> {
         .map((c) => {
           if (c.type === "text") return c.text;
           if (c.type === "tool_result") return `[tool result]\n${c.content}`;
-          if (c.type === "tool_use") return `[wanted to call ${c.name}, but tool calls are unavailable in fallback mode]`;
+          if (c.type === "tool_use") return `[tool call unavailable: ${c.name}]`;
           return "";
         })
         .filter(Boolean)

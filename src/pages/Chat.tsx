@@ -48,7 +48,6 @@ type AgentClientResult = {
 };
 
 const AGENT_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-agent`;
-const LEGACY_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-chat`;
 
 const parseDataUrl = (dataUrl: string) => {
   const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
@@ -60,37 +59,6 @@ const parseDataUrl = (dataUrl: string) => {
 
 const getErrorMessage = (err: unknown, fallback: string) =>
   err instanceof Error ? err.message : fallback;
-
-const readLegacyChatStream = async (resp: Response) => {
-  if (!resp.body) return await resp.text();
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let output = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> };
-        output += chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
-      } catch {
-        output += payload;
-      }
-    }
-  }
-
-  return output.trim();
-};
 
 const Chat = () => {
   const { user } = useAuth();
@@ -313,101 +281,30 @@ const Chat = () => {
       case 'capture_image':
         throw new Error('Camera capture needs a user tap. Ask the user to press the camera button.');
       case 'robot_status':
-        return {
-          robotId: 'clrk-app-bridge',
-          name: 'CLRK App Robot Bridge',
-          mode: 'observe',
-          moving: false,
-          capabilities: ['robot_status', 'robot_say', 'robot_stop'],
-          safety: {
-            emergencyStop: false,
-            notes: ['No dedicated robot runtime is connected to this app session. Install robot-runtime on the robot for physical tools.'],
-          },
-        };
       case 'robot_say':
-        if (!isMuted && typeof toolInput.text === 'string') {
-          voiceConv.speak(toolInput.text);
-        }
-        return { spoken: String(toolInput.text || '') };
       case 'robot_stop':
-        return { stopped: true, message: 'No dedicated robot runtime connected; app bridge is already stationary.' };
       case 'robot_read_sensors':
       case 'robot_capture_image':
       case 'robot_move_base':
       case 'robot_set_mode':
-        throw new Error('Install and run robot-runtime on the robot to execute physical robot tools.');
+        throw new Error('Robot runtime is not connected. Start robot-runtime on the robot before using robot tools.');
       case 'smart_device_status':
-        return {
-          meshId: 'clrk-app-device-bridge',
-          status: 'app_bridge_only',
-          activeConversationEndpoints: ['phone'],
-          transports: ['bluetooth_web_preview', 'camera', 'microphone', 'speaker'],
-          note: 'Install device-mesh on dedicated hardware or native app builds for glasses, VR, vehicle, Matter, and robot endpoints.',
-          bluetoothState: getBluetoothState(),
-        };
       case 'smart_device_scan':
-        return {
-          discovered: [],
-          category: toolInput.category || 'all',
-          transport: toolInput.transport || 'any',
-          note: 'Browser bridge can only expose limited Bluetooth preview. Use Device Hub or install device-mesh for universal discovery.',
-        };
       case 'smart_device_start_conversation':
-        return {
-          sessionId: conversationId || 'current-chat-session',
-          mode: toolInput.mode || 'hands_free',
-          deviceId: toolInput.device_id,
-          routedTo: 'current CLRK app chat and voice session',
-        };
       case 'smart_device_stop_conversation':
-        return { stopped: true, deviceId: toolInput.device_id, summary: 'Stopped app-bridge conversation endpoint.' };
       case 'smart_device_command':
       case 'smart_device_connect':
       case 'smart_device_read_context':
-        throw new Error('Install and run device-mesh on the target hardware to execute smart-device mesh tools.');
+        throw new Error('Device Mesh runtime is not connected. Start device-mesh on the target hardware before using smart-device tools.');
       default:
         throw new Error(`Unknown client tool: ${call.name}`);
     }
-  }, [bluetooth, conversationId, getBluetoothState, isMuted, toast, voiceConv]);
+  }, [bluetooth, getBluetoothState, toast]);
 
   const runAgent = useCallback(async (initialMessages: AgentMessage[], voiceMode: boolean) => {
     const token = await getAuthToken();
     let agentMessages = initialMessages;
     let clientToolResults: AgentClientResult[] | undefined;
-
-    const runLegacyChat = async () => {
-      const resp = await fetch(LEGACY_CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          messages: initialMessages.map((message) => ({
-            role: message.role,
-            content: Array.isArray(message.content)
-              ? message.content
-                  .filter((block): block is { type: 'text'; text: string } =>
-                    typeof block === 'object' && block !== null && block.type === 'text' && typeof block.text === 'string'
-                  )
-                  .map((block) => block.text)
-                  .join('\n')
-              : message.content,
-          })),
-          userId: user?.id,
-          conversationId,
-          voiceMode,
-          bluetoothState: getBluetoothState(),
-        }),
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(typeof errData.error === 'string' ? errData.error : `Error ${resp.status}`);
-      }
-
-      return await readLegacyChatStream(resp);
-    };
 
     for (let step = 0; step < 8; step++) {
       const resp = await fetch(AGENT_CHAT_URL, {
@@ -424,10 +321,6 @@ const Chat = () => {
           ...(clientToolResults ? { clientToolResults } : {}),
         }),
       });
-
-      if (resp.status === 404) {
-        return await runLegacyChat();
-      }
 
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
@@ -460,7 +353,7 @@ const Chat = () => {
     }
 
     return 'I hit my tool loop limit before finishing that. Try the request again in a smaller step.';
-  }, [conversationId, executeClientTool, getBluetoothState, user?.id]);
+  }, [conversationId, executeClientTool, getBluetoothState]);
 
   const sendUserMessage = async (text: string, voiceMode: boolean) => {
     if (!text.trim() || isLoading || !user) return;

@@ -20,6 +20,8 @@ export interface LoadContextOptions {
   memoryLimit?: number;
 }
 
+type QueryResult<T = unknown> = { data?: T | null; error?: unknown };
+
 export function getServiceClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -55,11 +57,11 @@ export async function loadUserContext(
     );
   }
 
-  const results = await Promise.all(baseQueries.map((p) => p.catch((e: unknown) => ({ error: e }))));
-  const [profileRes, goalsRes, domainsRes, briefingRes, deviceRes, ...rest] = results as any[];
+  const results = await Promise.all(baseQueries.map((p) => Promise.resolve(p).catch((e: unknown) => ({ error: e }))));
+  const [profileRes, goalsRes, domainsRes, briefingRes, deviceRes, ...rest] = results as QueryResult[];
 
-  let allGoalsRes: any = null;
-  let summaryRes: any = null;
+  let allGoalsRes: QueryResult | null = null;
+  let summaryRes: QueryResult<{ summary?: string }> | null = null;
   let idx = 0;
   if (opts.includeGoalHistory) allGoalsRes = rest[idx++];
   if (opts.conversationId) summaryRes = rest[idx++];
@@ -80,7 +82,7 @@ export async function loadUserContext(
         p_match_count: opts.memoryLimit ?? 8,
       });
       if (Array.isArray(data)) {
-        memoryFacts = data.map((d: any) => ({ kind: d.kind, content: d.content }));
+        memoryFacts = data.map((d: { kind: string; content: string }) => ({ kind: d.kind, content: d.content }));
       }
     } catch {
       // memory not available yet — ignore
@@ -88,21 +90,21 @@ export async function loadUserContext(
   }
 
   return {
-    displayName: p.display_name,
-    roles: p.roles,
-    communicationStyle: p.communication_style,
-    riskTolerance: p.risk_tolerance,
-    challenges: p.current_challenges,
-    priorities: p.top_priorities,
-    personalityType: p.personality_type,
-    automationComfort: p.automation_comfort,
-    timeDrains: p.time_drains,
-    goals: goalsRes?.data || [],
-    allGoals: allGoalsRes?.data || null,
-    domains: (domainsRes?.data || []).map((d: { domain: string }) => d.domain),
-    domainPriorities: domainsRes?.data || [],
-    lastBriefing: briefingRes?.data?.[0] || null,
-    recentDeviceData: deviceRes?.data || [],
+    displayName: (p as { display_name?: string }).display_name,
+    roles: (p as { roles?: string[] }).roles,
+    communicationStyle: (p as { communication_style?: string }).communication_style,
+    riskTolerance: (p as { risk_tolerance?: string }).risk_tolerance,
+    challenges: (p as { current_challenges?: string[] }).current_challenges,
+    priorities: (p as { top_priorities?: string[] }).top_priorities,
+    personalityType: (p as { personality_type?: string }).personality_type,
+    automationComfort: (p as { automation_comfort?: string }).automation_comfort,
+    timeDrains: (p as { time_drains?: string[] }).time_drains,
+    goals: Array.isArray(goalsRes?.data) ? goalsRes.data : [],
+    allGoals: Array.isArray(allGoalsRes?.data) ? allGoalsRes.data : null,
+    domains: Array.isArray(domainsRes?.data) ? domainsRes.data.map((d: { domain: string }) => d.domain) : [],
+    domainPriorities: Array.isArray(domainsRes?.data) ? domainsRes.data : [],
+    lastBriefing: Array.isArray(briefingRes?.data) ? briefingRes.data[0] || null : null,
+    recentDeviceData: Array.isArray(deviceRes?.data) ? deviceRes.data : [],
     conversationSummary: summaryRes?.data?.summary || null,
     memoryFacts,
   };
