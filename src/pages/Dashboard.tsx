@@ -158,6 +158,11 @@ const Dashboard = () => {
                 <Bluetooth className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Devices</span>
               </Button>
             </Link>
+            <Link to="/robot">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
+                <Bot className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Robot</span>
+              </Button>
+            </Link>
             <Link to="/social">
               <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <Share2 className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Social</span>

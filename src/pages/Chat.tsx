@@ -7,7 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image, Bluetooth } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image, Bluetooth } from 'lucide-react';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useVoiceConversation } from '@/hooks/useVoiceConversation';
 import { useBluetooth, type DeviceReading } from '@/hooks/useBluetooth';
@@ -99,6 +99,7 @@ const Chat = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraStreaming, setCameraStreaming] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -462,7 +463,15 @@ const Chat = () => {
   }, [conversationId, executeClientTool, getBluetoothState, user?.id]);
 
   const sendUserMessage = async (text: string, voiceMode: boolean) => {
-    if (!text.trim() || isLoading || !user || !conversationId) return;
+    if (!text.trim() || isLoading || !user) return;
+    if (!conversationId) {
+      toast({
+        title: 'Conversation not ready',
+        description: conversationError || 'CLRK is still creating your conversation. Try again in a moment.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const currentImage = pendingImage;
     const userMsg: Message = { role: 'user', content: text.trim(), imageBase64: currentImage || undefined };
     const nextMessages = [...messages, userMsg];
@@ -516,14 +525,19 @@ const Chat = () => {
   useEffect(() => {
     if (!user) return;
     const init = async () => {
+      setConversationError(null);
       // Get most recent conversation or create one
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('chat_conversations')
         .select('id')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
+
+      if (error) {
+        setConversationError(error.message);
+      }
 
       if (data) {
         setConversationId(data.id);
@@ -535,19 +549,24 @@ const Chat = () => {
           .order('created_at');
         if (msgs) setMessages(msgs as Message[]);
       } else {
-        const { data: newConv } = await supabase
+        const { data: newConv, error: createError } = await supabase
           .from('chat_conversations')
           .insert({ user_id: user.id, title: 'New Conversation' })
           .select('id')
           .single();
+        if (createError) {
+          setConversationError(createError.message);
+          toast({ title: 'Conversation failed', description: createError.message, variant: 'destructive' });
+          return;
+        }
         if (newConv) setConversationId(newConv.id);
       }
     };
     init();
-  }, [user]);
+  }, [toast, user]);
 
   const sendMessage = async () => {
-    if ((!input.trim() && !pendingImage) || isLoading || !user || !conversationId) return;
+    if ((!input.trim() && !pendingImage) || isLoading || !user) return;
     const content = input.trim() || (pendingImage ? 'What do you see in this image? Analyze it and help me.' : '');
     await sendUserMessage(content, voiceConv.isVoiceMode);
   };
@@ -627,8 +646,18 @@ const Chat = () => {
             </div>
             <div className="text-6xl font-mono neon-text font-bold mb-4">CLRK</div>
             <p className="text-muted-foreground text-sm max-w-md text-balance">
-              Your personal intelligence system is ready. Ask me anything about your goals, career, finances, health, relationships, or life strategy.
+              {conversationError
+                ? 'CLRK is online, but the conversation store is not ready. Check the warning below.'
+                : 'Your personal intelligence system is ready. Ask me anything about your goals, career, finances, health, relationships, or life strategy.'}
             </p>
+            {conversationError && (
+              <div className="mt-5 max-w-md rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-left">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <p className="text-xs text-destructive">{conversationError}</p>
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap justify-center gap-2 mt-6">
               {['What should I focus on today?', 'Review my goals', 'Help me plan my week'].map(s => (
                 <button
@@ -749,12 +778,22 @@ const Chat = () => {
         </div>
         {voiceConv.isVoiceMode && (
           <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
-            🎙️ VOICE MODE ACTIVE — Speak naturally, CLRK will respond aloud
+            VOICE MODE ACTIVE - Speak naturally, CLRK will respond aloud
+          </p>
+        )}
+        {voiceConv.voiceError && (
+          <p className="text-center text-[10px] font-mono text-destructive mt-2">
+            {voiceConv.voiceError}
+          </p>
+        )}
+        {!voiceConv.browserSupportsVoice && (
+          <p className="text-center text-[10px] font-mono text-yellow-300 mt-2">
+            Voice recognition needs Chrome or the native CLRK app. Text chat still works here.
           </p>
         )}
         {cameraStreaming && (
           <p className="text-center text-[10px] font-mono text-primary/60 mt-1">
-            📷 CAMERA ACTIVE — Capture a frame for CLRK to analyze
+            CAMERA ACTIVE - Capture a frame for CLRK to analyze
           </p>
         )}
       </div>

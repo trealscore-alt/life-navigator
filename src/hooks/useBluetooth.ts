@@ -106,6 +106,26 @@ export interface DeviceReading {
   metadata?: Record<string, unknown>;
 }
 
+interface WebBluetoothRemoteGATTServer {
+  connected: boolean;
+  connect: () => Promise<WebBluetoothRemoteGATTServer>;
+  disconnect: () => void;
+  getPrimaryServices?: () => Promise<Array<{ uuid: string }>>;
+}
+
+interface WebBluetoothDevice {
+  id: string;
+  name?: string;
+  gatt?: WebBluetoothRemoteGATTServer;
+  addEventListener?: (type: 'gattserverdisconnected', listener: () => void) => void;
+}
+
+interface WebBluetoothNavigator extends Navigator {
+  bluetooth?: {
+    requestDevice: (options: { acceptAllDevices: boolean; optionalServices?: string[] }) => Promise<WebBluetoothDevice>;
+  };
+}
+
 export function useBluetooth() {
   const [devices, setDevices] = useState<BluetoothDevice[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -116,10 +136,11 @@ export function useBluetooth() {
   const [monitoring, setMonitoring] = useState<Set<string>>(new Set());
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeNotificationsRef = useRef<{ deviceId: string; service: string; characteristic: string }[]>([]);
+  const webDevicesRef = useRef<Map<string, WebBluetoothDevice>>(new Map());
 
   useEffect(() => { setIsNative(Capacitor.isNativePlatform()); }, []);
 
-  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in (navigator as any);
+  const hasWebBluetooth = typeof navigator !== 'undefined' && Boolean((navigator as WebBluetoothNavigator).bluetooth);
 
   const initialize = useCallback(async () => {
     try {
@@ -129,8 +150,8 @@ export function useBluetooth() {
       }
       // Web Bluetooth doesn't need initialization
       setInitialized(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to initialize Bluetooth');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initialize Bluetooth');
     }
   }, [isNative]);
 
@@ -141,6 +162,11 @@ export function useBluetooth() {
   const startMonitoring = useCallback(async (deviceId: string) => {
     const device = devices.find(d => d.deviceId === deviceId);
     if (!device?.connected) return;
+
+    if (!isNative) {
+      setError('Browser Bluetooth can connect to selected devices, but live monitoring requires the native CLRK app or Device Mesh runtime.');
+      return;
+    }
 
     setMonitoring(prev => new Set([...prev, deviceId]));
 
@@ -225,11 +251,11 @@ export function useBluetooth() {
       setDevices(prev => prev.map(d =>
         d.deviceId === deviceId ? { ...d, serviceNames } : d
       ));
-    } catch (err: any) {
-      setError(`Monitoring failed: ${err.message}`);
+    } catch (err) {
+      setError(`Monitoring failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setMonitoring(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
     }
-  }, [devices, addReading]);
+  }, [devices, addReading, isNative]);
 
   const stopMonitoring = useCallback(async (deviceId: string) => {
     const toRemove = activeNotificationsRef.current.filter(n => n.deviceId === deviceId);
@@ -248,11 +274,13 @@ export function useBluetooth() {
     }
     try {
       // Web Bluetooth uses requestDevice (user picks from browser dialog)
-      const bt = (navigator as any).bluetooth;
+      const bt = (navigator as WebBluetoothNavigator).bluetooth;
+      if (!bt) throw new Error('Bluetooth is not supported in this browser.');
       const device = await bt.requestDevice({
         acceptAllDevices: true,
         optionalServices: Object.keys(KNOWN_SERVICES).map(k => k.toLowerCase()),
       });
+      webDevicesRef.current.set(device.id, device);
       const newDevice: BluetoothDevice = {
         deviceId: device.id,
         name: device.name || null,
@@ -271,9 +299,9 @@ export function useBluetooth() {
         }
         return [...prev, newDevice];
       });
-    } catch (err: any) {
-      if (err.name !== 'NotFoundError') { // user cancelled
-        setError(err.message || 'Scan failed');
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'NotFoundError')) { // user cancelled
+        setError(err instanceof Error ? err.message : 'Scan failed');
       }
     }
     setScanning(false);
@@ -315,8 +343,12 @@ export function useBluetooth() {
         });
       });
 
-      scanTimeoutRef.current = setTimeout(() => stopScan(), durationMs);
-    } catch (err: any) { setError(err.message || 'Scan failed'); setScanning(false); }
+      scanTimeoutRef.current = setTimeout(async () => {
+        try { await BleClient.stopLEScan(); } catch { /* ok */ }
+        scanTimeoutRef.current = null;
+        setScanning(false);
+      }, durationMs);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Scan failed'); setScanning(false); }
   }, [initialized, initialize, isNative, webBluetoothScan]);
 
   const stopScan = useCallback(async () => {
@@ -328,6 +360,29 @@ export function useBluetooth() {
   const connectDevice = useCallback(async (deviceId: string) => {
     try {
       setError(null);
+      if (!isNative) {
+        const webDevice = webDevicesRef.current.get(deviceId);
+        if (!webDevice?.gatt) throw new Error('Select this device again with Scan before connecting.');
+        const server = await webDevice.gatt.connect();
+        webDevice.addEventListener?.('gattserverdisconnected', () => {
+          setDevices(prev => prev.map(d => d.deviceId === deviceId ? { ...d, connected: false } : d));
+          setMonitoring(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
+        });
+        const services = server.getPrimaryServices ? await server.getPrimaryServices().catch(() => []) : [];
+        setDevices(prev => prev.map(d =>
+          d.deviceId === deviceId
+            ? {
+                ...d,
+                connected: server.connected,
+                services: services.map(s => s.uuid),
+                serviceNames: services
+                  .map(s => KNOWN_SERVICES[s.uuid.toLowerCase()]?.name)
+                  .filter((name): name is string => Boolean(name)),
+              }
+            : d
+        ));
+        return;
+      }
       await BleClient.connect(deviceId, () => {
         setDevices(prev => prev.map(d => d.deviceId === deviceId ? { ...d, connected: false } : d));
         setMonitoring(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
@@ -337,16 +392,22 @@ export function useBluetooth() {
       setDevices(prev => prev.map(d =>
         d.deviceId === deviceId ? { ...d, services: services.map(s => s.uuid) } : d
       ));
-    } catch (err: any) { setError(`Connect failed: ${err.message}`); }
-  }, []);
+    } catch (err) { setError(`Connect failed: ${err instanceof Error ? err.message : 'Unknown error'}`); }
+  }, [isNative]);
 
   const disconnectDevice = useCallback(async (deviceId: string) => {
     try {
       if (monitoring.has(deviceId)) await stopMonitoring(deviceId);
+      if (!isNative) {
+        const webDevice = webDevicesRef.current.get(deviceId);
+        webDevice?.gatt?.disconnect();
+        setDevices(prev => prev.map(d => d.deviceId === deviceId ? { ...d, connected: false } : d));
+        return;
+      }
       await BleClient.disconnect(deviceId);
       setDevices(prev => prev.map(d => d.deviceId === deviceId ? { ...d, connected: false } : d));
-    } catch (err: any) { setError(`Disconnect failed: ${err.message}`); }
-  }, [monitoring, stopMonitoring]);
+    } catch (err) { setError(`Disconnect failed: ${err instanceof Error ? err.message : 'Unknown error'}`); }
+  }, [isNative, monitoring, stopMonitoring]);
 
   return {
     devices, scanning, initialized, error, isNative, liveReadings, monitoring,

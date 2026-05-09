@@ -12,7 +12,7 @@ import {
   BluetoothOff, Radio, Signal, SignalLow, SignalMedium, SignalHigh,
   Smartphone, Watch, Speaker, Cpu, Monitor, Loader2, AlertTriangle,
   Power, PowerOff, Wifi, Heart, Thermometer, Activity, Battery,
-  Brain, Upload, Wind, Droplets, Gauge, Zap,
+  Brain, Upload, Wind, Droplets, Gauge, Zap, Glasses, Car, House, Gamepad2, Bot,
 } from 'lucide-react';
 
 const PROCESS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-device-data`;
@@ -100,6 +100,13 @@ const DeviceHub = () => {
 
   const connectedCount = devices.filter(d => d.connected).length;
   const monitoringCount = monitoring.size;
+  const meshEndpoints = [
+    { label: 'Smart Glasses', icon: Glasses, status: 'Device Mesh runtime required', tone: 'text-cyan-300' },
+    { label: 'VR / XR', icon: Gamepad2, status: 'OpenXR bridge ready', tone: 'text-purple-300' },
+    { label: 'Vehicle', icon: Car, status: 'Vehicle bridge required', tone: 'text-yellow-300' },
+    { label: 'Smart Home', icon: House, status: 'Matter/HomeKit adapter required', tone: 'text-green-300' },
+    { label: 'Robot', icon: Bot, status: 'Use Robot Control', tone: 'text-primary' },
+  ];
 
   // Buffer readings for batch sync
   useEffect(() => {
@@ -269,6 +276,33 @@ const DeviceHub = () => {
             </div>
           </motion.div>
         )}
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-lg p-5">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 className="font-mono text-xs text-primary uppercase tracking-wider flex items-center gap-2">
+                <Cpu className="w-4 h-4" /> Smart Device Mesh
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bluetooth pairing works here. Glasses, VR, vehicles, smart home, and robots connect through the installable Device Mesh or Robot Runtime.
+              </p>
+            </div>
+            <Link to="/robot">
+              <Button variant="outline" size="sm" className="font-mono text-[10px]">
+                <Bot className="w-3.5 h-3.5 mr-1.5" /> Robot
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {meshEndpoints.map((endpoint) => (
+              <div key={endpoint.label} className="command-surface rounded-lg p-3">
+                <endpoint.icon className={`w-4 h-4 ${endpoint.tone}`} />
+                <p className="mt-3 font-mono text-xs">{endpoint.label}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">{endpoint.status}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
 
         {scanning && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

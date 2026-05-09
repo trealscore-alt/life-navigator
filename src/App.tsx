@@ -11,6 +11,7 @@ import Chat from "./pages/Chat";
 import AgentNetwork from "./pages/AgentNetwork";
 import AutonomyCenter from "./pages/AutonomyCenter";
 import DeviceHub from "./pages/DeviceHub";
+import RobotControl from "./pages/RobotControl";
 import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
 import SocialMedia from "./pages/SocialMedia";
@@ -41,6 +42,7 @@ const AppRoutes = () => (
     <Route path="/autonomy" element={<ProtectedRoute><AutonomyCenter /></ProtectedRoute>} />
     <Route path="/agents" element={<ProtectedRoute><AgentNetwork /></ProtectedRoute>} />
     <Route path="/devices" element={<ProtectedRoute><DeviceHub /></ProtectedRoute>} />
+    <Route path="/robot" element={<ProtectedRoute><RobotControl /></ProtectedRoute>} />
     <Route path="/live" element={<ProtectedRoute><LiveMode /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
     <Route path="/social" element={<ProtectedRoute><SocialMedia /></ProtectedRoute>} />

@@ -11,14 +11,56 @@ interface UseVoiceConversationOptions {
   onStop?: () => void;
 }
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
 export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, onWake, onStop }: UseVoiceConversationOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const shouldRestartRef = useRef(false);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const browserSupportsVoice =
+    typeof window !== 'undefined' &&
+    Boolean((window as SpeechRecognitionWindow).SpeechRecognition || (window as SpeechRecognitionWindow).webkitSpeechRecognition);
 
   // Pre-load voices — Chrome requires waiting for voiceschanged
   useEffect(() => {
@@ -44,15 +86,23 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     setIsListening(false);
   }, []);
 
+  const stopSpeaking = useCallback(() => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, []);
+
   const startListening = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      toast.error('Speech recognition not supported in this browser');
-      return;
+      const message = 'Speech recognition is not supported in this browser. Try Chrome or the native CLRK app.';
+      setVoiceError(message);
+      toast.error(message);
+      return false;
     }
 
     // Don't start if currently speaking
-    if (window.speechSynthesis?.speaking) return;
+    if (window.speechSynthesis?.speaking) return false;
 
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* ignore */ }
@@ -63,9 +113,12 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => {
+      setVoiceError(null);
+      setIsListening(true);
+    };
     
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       const text = event.results[event.results.length - 1]?.[0]?.transcript?.trim();
       if (!text) return;
 
@@ -97,9 +150,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       }
     };
 
-    recognition.onerror = (e: any) => {
+    recognition.onerror = (e: SpeechRecognitionErrorEventLike) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         console.error('Voice recognition error:', e.error);
+        setVoiceError(`Voice recognition error: ${e.error}`);
       }
       setIsListening(false);
       recognitionRef.current = null;
@@ -110,8 +164,16 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     };
 
     recognitionRef.current = recognition;
-    try { recognition.start(); } catch { /* ignore */ }
-  }, [onTranscript]);
+    try {
+      recognition.start();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Voice recognition could not start.';
+      setVoiceError(message);
+      toast.error(message);
+      return false;
+    }
+  }, [onStop, onTranscript, onWake, stopSpeaking]);
 
   const speak = useCallback((text: string) => {
     if (!window.speechSynthesis) {
@@ -193,18 +255,17 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     }, 100);
   }, [stopListening, startListening, onSpeakStart, onSpeakEnd]);
 
-  const stopSpeaking = useCallback(() => {
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-  }, []);
-
   const toggleVoiceMode = useCallback(() => {
     setIsVoiceMode(prev => {
       const next = !prev;
       if (next) {
         shouldRestartRef.current = true;
-        startListening();
-        toast.success('Voice mode activated — speak to CLRK');
+        const started = startListening();
+        if (!started) {
+          shouldRestartRef.current = false;
+          return false;
+        }
+        toast.success('Voice mode activated. Speak to CLRK.');
       } else {
         shouldRestartRef.current = false;
         stopListening();
@@ -219,6 +280,8 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     isListening,
     isSpeaking,
     isVoiceMode,
+    browserSupportsVoice,
+    voiceError,
     startListening,
     stopListening,
     speak,
