@@ -1,0 +1,25 @@
+{
+  "name": "@clrk/robot-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Installable robot-side runtime for CLRK Hyper Agent autonomy.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "clrk-robot": "dist/bin/clrk-robot.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/bin/clrk-robot.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "typescript": "^5.8.3"
+  }
+}

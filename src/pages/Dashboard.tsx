@@ -90,23 +90,24 @@ const Dashboard = () => {
   const fmtUptime = (s: number) => `${Math.floor(s / 3600).toString().padStart(2, '0')}:${Math.floor((s % 3600) / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   return (
-    <div className="min-h-screen relative">
-      <div className="absolute inset-0 grid-bg opacity-10" />
+    <div className="min-h-screen clrk-shell relative">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Top Bar */}
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
+      <header className="relative z-10 control-bar">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
+            <div className="agent-mark h-9 w-9 rounded-lg">
+              <Brain className="h-5 w-5" />
+            </div>
             <h1 className="font-mono text-xl neon-text font-bold tracking-wider">CLRK</h1>
-            <div className="hidden md:flex items-center gap-3 text-[10px] font-mono text-muted-foreground border-l border-border/30 pl-4 ml-2">
+            <div className="hidden md:flex items-center gap-3 border-l border-border/40 pl-4 ml-2">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span>SUPER AGENT ONLINE</span>
+                <span className="status-pill border-green-400/20 bg-green-400/10 text-green-300">Super Agent Online</span>
               </div>
-              <span className="text-border">|</span>
-              <div className="flex items-center gap-1"><Cpu className="w-3 h-3" /> <span>COGNITIVE CORE ACTIVE</span></div>
-              <span className="text-border">|</span>
-              <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> <span>UPTIME {fmtUptime(uptime)}</span></div>
+              <div className="status-pill"><Cpu className="w-3 h-3" /> <span>Core Active</span></div>
+              <div className="status-pill"><Clock className="w-3 h-3" /> <span>{fmtUptime(uptime)}</span></div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -121,9 +122,10 @@ const Dashboard = () => {
 
       <main className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Greeting + Quick Nav */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="command-surface rounded-lg p-5 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-mono">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-primary/70 mb-2">Mission Control</p>
+            <h2 className="text-2xl font-mono text-balance">
               {greeting}, <span className="neon-text">{profile?.display_name || 'Agent'}</span>
             </h2>
             <p className="text-muted-foreground text-xs mt-1 font-mono">
@@ -137,27 +139,27 @@ const Dashboard = () => {
               </Button>
             </Link>
             <Link to="/chat">
-              <Button size="sm" variant="outline" className="font-mono text-xs">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> <span className="hidden sm:inline">Talk to</span> CLRK
               </Button>
             </Link>
             <Link to="/autonomy">
-              <Button size="sm" variant="outline" className="font-mono text-xs">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <Bot className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Autonomy</span>
               </Button>
             </Link>
             <Link to="/agents">
-              <Button size="sm" variant="outline" className="font-mono text-xs">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <Radio className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Agents</span>
               </Button>
             </Link>
             <Link to="/devices">
-              <Button size="sm" variant="outline" className="font-mono text-xs">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <Bluetooth className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Devices</span>
               </Button>
             </Link>
             <Link to="/social">
-              <Button size="sm" variant="outline" className="font-mono text-xs">
+              <Button size="sm" variant="outline" className="font-mono text-xs bg-secondary/40">
                 <Share2 className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Social</span>
               </Button>
             </Link>
@@ -170,7 +172,7 @@ const Dashboard = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="lg:col-span-5 glass-card neon-border rounded-xl p-5"
+            className="lg:col-span-5 glass-card neon-border rounded-lg p-5 hover-lift"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-mono text-xs text-primary uppercase tracking-wider flex items-center gap-2">
@@ -190,7 +192,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
-              className="glass-card rounded-xl p-5"
+              className="glass-card rounded-lg p-5 hover-lift"
             >
               <h3 className="font-mono text-xs text-primary uppercase tracking-wider flex items-center gap-2 mb-3">
                 <Brain className="w-4 h-4" /> Daily Intelligence Briefing
@@ -216,7 +218,7 @@ const Dashboard = () => {
                 <span className="text-[10px] font-mono text-muted-foreground">{goals.length}</span>
               </div>
               {goals.length === 0 ? (
-                <div className="glass-card rounded-xl p-6 text-center">
+                <div className="glass-card rounded-lg p-6 text-center">
                   <p className="text-muted-foreground text-xs font-mono">No goals set. CLRK needs objectives to operate at full capacity.</p>
                   <Link to="/chat">
                     <Button size="sm" className="mt-3 font-mono text-xs">Define Goals with CLRK</Button>
@@ -228,7 +230,7 @@ const Dashboard = () => {
                     const Icon = DOMAIN_ICONS[goal.domain] || Target;
                     const color = DOMAIN_COLORS[goal.domain] || 'text-primary';
                     return (
-                      <div key={goal.id} className="glass-card rounded-lg p-4 space-y-2 group hover:neon-border transition-all">
+                      <div key={goal.id} className="command-surface rounded-lg p-4 space-y-2 group hover-lift">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
                             <Icon className={`w-3.5 h-3.5 ${color}`} />
@@ -259,7 +261,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="glass-card rounded-xl p-5"
+              className="glass-card rounded-lg p-5 hover-lift"
             >
               <h3 className="font-mono text-xs text-primary uppercase tracking-wider flex items-center gap-2 mb-3">
                 <Shield className="w-4 h-4" /> System Status
@@ -280,7 +282,7 @@ const Dashboard = () => {
                       ? Math.round(domainGoals.reduce((s, g) => s + g.progress, 0) / domainGoals.length)
                       : 0;
                     return (
-                      <div key={d.domain} className="glass-card rounded-lg p-3 text-center space-y-1 hover:neon-border transition-all cursor-pointer">
+                      <div key={d.domain} className="command-surface rounded-lg p-3 text-center space-y-1 hover-lift cursor-pointer">
                         <Icon className={`w-5 h-5 mx-auto ${color}`} />
                         <p className="font-mono text-[10px] capitalize">{d.domain}</p>
                         <div className="flex items-center gap-1 justify-center">

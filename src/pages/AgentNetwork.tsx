@@ -175,11 +175,11 @@ const AgentNetwork = () => {
     : messages;
 
   return (
-    <div className="min-h-screen relative">
-      <div className="absolute inset-0 grid-bg opacity-10" />
+    <div className="min-h-screen clrk-shell relative">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Header */}
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
+      <header className="relative z-10 control-bar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <Link to="/dashboard">
@@ -321,11 +321,11 @@ const AgentNetwork = () => {
             </h3>
 
             {loading ? (
-              <div className="glass-card rounded-xl p-6 text-center">
+              <div className="glass-card rounded-lg p-6 text-center">
                 <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
               </div>
             ) : agents.length === 0 ? (
-              <div className="glass-card rounded-xl p-6 text-center">
+              <div className="glass-card rounded-lg p-6 text-center">
                 <p className="text-muted-foreground text-xs font-mono">No agents connected yet</p>
               </div>
             ) : (
@@ -411,7 +411,7 @@ const AgentNetwork = () => {
             </div>
 
             {filteredMessages.length === 0 ? (
-              <div className="glass-card rounded-xl p-8 text-center">
+              <div className="glass-card rounded-lg p-8 text-center">
                 <Radio className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-50" />
                 <p className="text-muted-foreground text-xs font-mono">No agent communications yet</p>
               </div>

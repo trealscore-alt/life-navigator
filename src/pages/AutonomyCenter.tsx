@@ -8,6 +8,8 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Globe2,
+  History,
   ListChecks,
   PauseCircle,
   Play,
@@ -84,6 +86,39 @@ interface ConversationSummary {
   updated_at: string;
 }
 
+interface HistoryEvent {
+  id: string;
+  source: string;
+  kind: string;
+  title: string | null;
+  content: string;
+  occurred_at: string;
+}
+
+interface ClrkSubagent {
+  id: string;
+  name: string;
+  role: string;
+  mission: string;
+  domain: string | null;
+  status: 'draft' | 'ready' | 'deployed' | 'paused' | 'completed' | 'failed' | 'archived';
+  autonomy_level: AutonomyLevel;
+  capabilities: string[];
+  tool_scope: string[];
+  last_deployed_at: string | null;
+  created_at: string;
+}
+
+interface ClrkSubagentRun {
+  id: string;
+  subagent_id: string;
+  status: 'queued' | 'running' | 'awaiting_user' | 'blocked' | 'completed' | 'failed' | 'cancelled';
+  objective: string;
+  output: { summary?: string } | null;
+  error_message: string | null;
+  created_at: string;
+}
+
 const STATUS_META: Record<TaskStatus, { label: string; color: string; icon: typeof Clock }> = {
   pending: { label: 'Pending', color: 'text-muted-foreground', icon: Clock },
   planning: { label: 'Planning', color: 'text-primary', icon: Sparkles },
@@ -109,6 +144,12 @@ const getErrorMessage = (err: unknown) =>
 
 const toPercent = (value: number, total: number) => (total === 0 ? 0 : Math.round((value / total) * 100));
 
+const isMissingRuntimeTable = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string };
+  return err.code === 'PGRST205' || Boolean(err.message?.includes('Could not find the table'));
+};
+
 const AutonomyCenter = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -116,6 +157,10 @@ const AutonomyCenter = () => {
   const [memories, setMemories] = useState<MemoryFact[]>([]);
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
+  const [historyEvents, setHistoryEvents] = useState<HistoryEvent[]>([]);
+  const [subagents, setSubagents] = useState<ClrkSubagent[]>([]);
+  const [subagentRuns, setSubagentRuns] = useState<ClrkSubagentRun[]>([]);
+  const [runtimeUnavailable, setRuntimeUnavailable] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [taskPrompt, setTaskPrompt] = useState('');
@@ -124,6 +169,7 @@ const AutonomyCenter = () => {
   const activeTasks = tasks.filter((t) => !['completed', 'cancelled', 'failed'].includes(t.status));
   const executingCount = tasks.filter((t) => t.status === 'executing').length;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
+  const deployedSubagents = subagents.filter((agent) => agent.status === 'deployed');
 
   const autonomyDistribution = useMemo(() => {
     return (Object.keys(AUTONOMY_LABELS) as AutonomyLevel[]).map((level) => ({
@@ -136,7 +182,7 @@ const AutonomyCenter = () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [taskRes, memoryRes, messageRes, summaryRes] = await Promise.all([
+      const [taskRes, memoryRes, messageRes, summaryRes, historyRes, subagentRes, runRes] = await Promise.all([
         supabase
           .from('clrk_tasks')
           .select('id, title, description, domain, status, autonomy_level, plan, scheduled_for, created_at, completed_at, result')
@@ -162,17 +208,61 @@ const AutonomyCenter = () => {
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false })
           .limit(8),
+        supabase
+          .from('clrk_history_events')
+          .select('id, source, kind, title, content, occurred_at')
+          .eq('user_id', user.id)
+          .order('occurred_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('clrk_subagents')
+          .select('id, name, role, mission, domain, status, autonomy_level, capabilities, tool_scope, last_deployed_at, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase
+          .from('clrk_subagent_runs')
+          .select('id, subagent_id, status, objective, output, error_message, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(30),
       ]);
 
-      if (taskRes.error) throw taskRes.error;
-      if (memoryRes.error) throw memoryRes.error;
+      const unavailable: string[] = [];
+      if (taskRes.error) {
+        if (isMissingRuntimeTable(taskRes.error)) unavailable.push('tasks');
+        else throw taskRes.error;
+      }
+      if (memoryRes.error) {
+        if (isMissingRuntimeTable(memoryRes.error)) unavailable.push('memory');
+        else throw memoryRes.error;
+      }
       if (messageRes.error) throw messageRes.error;
-      if (summaryRes.error) throw summaryRes.error;
+      if (summaryRes.error) {
+        if (isMissingRuntimeTable(summaryRes.error)) unavailable.push('summaries');
+        else throw summaryRes.error;
+      }
+      if (historyRes.error) {
+        if (isMissingRuntimeTable(historyRes.error)) unavailable.push('history');
+        else throw historyRes.error;
+      }
+      if (subagentRes.error) {
+        if (isMissingRuntimeTable(subagentRes.error)) unavailable.push('subagents');
+        else throw subagentRes.error;
+      }
+      if (runRes.error) {
+        if (isMissingRuntimeTable(runRes.error)) unavailable.push('subagent runs');
+        else throw runRes.error;
+      }
+      setRuntimeUnavailable(unavailable);
 
       setTasks((taskRes.data || []) as ClrkTask[]);
       setMemories((memoryRes.data || []) as MemoryFact[]);
       setAgentMessages((messageRes.data || []) as AgentMessage[]);
       setSummaries((summaryRes.data || []) as ConversationSummary[]);
+      setHistoryEvents((historyRes.data || []) as HistoryEvent[]);
+      setSubagents((subagentRes.data || []) as ClrkSubagent[]);
+      setSubagentRuns((runRes.data || []) as ClrkSubagentRun[]);
     } catch (err) {
       toast({ title: 'Autonomy data unavailable', description: getErrorMessage(err), variant: 'destructive' });
     }
@@ -248,10 +338,10 @@ const AutonomyCenter = () => {
   };
 
   return (
-    <div className="min-h-screen relative">
-      <div className="absolute inset-0 grid-bg opacity-10" />
+    <div className="min-h-screen clrk-shell relative">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
+      <header className="relative z-10 control-bar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4 min-w-0">
             <Link to="/dashboard">
@@ -259,11 +349,11 @@ const AutonomyCenter = () => {
             </Link>
             <div className="min-w-0">
               <h1 className="font-mono text-lg flex items-center gap-2">
-                <Bot className="w-5 h-5 text-primary" />
+                <span className="agent-mark h-9 w-9 rounded-lg"><Bot className="w-5 h-5 text-primary" /></span>
                 <span className="neon-text">Autonomy Center</span>
               </h1>
               <p className="text-[10px] font-mono text-muted-foreground">
-                Tasks • Memory • Approvals • Execution state
+                Tasks • Memory • History • Internet • Execution state
               </p>
             </div>
           </div>
@@ -275,18 +365,33 @@ const AutonomyCenter = () => {
       </header>
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-6 space-y-6">
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {runtimeUnavailable.length > 0 && (
+          <section className="glass-card rounded-lg border-yellow-400/30 bg-yellow-400/5 p-4">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-yellow-400" />
+              <div>
+                <p className="font-mono text-xs uppercase tracking-wider text-yellow-300">Runtime database not deployed</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  CLRK can load the base app, but {runtimeUnavailable.join(', ')} are missing from the live Supabase schema. Apply the CLRK migrations to enable this screen end to end.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[
             { label: 'Active Tasks', value: activeTasks.length, icon: ListChecks, tone: 'text-primary' },
             { label: 'Executing', value: executingCount, icon: Zap, tone: 'text-green-400' },
             { label: 'Approvals', value: pendingApprovals.length, icon: ShieldAlert, tone: 'text-yellow-400' },
-            { label: 'Memory Facts', value: memories.length, icon: Brain, tone: 'text-purple-400' },
+            { label: 'Subagents', value: deployedSubagents.length, icon: Bot, tone: 'text-purple-400' },
+            { label: 'History', value: historyEvents.length + summaries.length + memories.length, icon: History, tone: 'text-cyan-300' },
           ].map((stat) => (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-card rounded-lg p-4"
+              className="glass-card rounded-lg p-4 hover-lift"
             >
               <div className="flex items-center justify-between">
                 <stat.icon className={`w-4 h-4 ${stat.tone}`} />
@@ -299,7 +404,7 @@ const AutonomyCenter = () => {
 
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 space-y-6">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-xl p-5">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-lg p-5">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                   <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2">
@@ -329,7 +434,7 @@ const AutonomyCenter = () => {
               {loading ? (
                 <div className="text-xs text-muted-foreground font-mono py-8 text-center">Loading autonomy state...</div>
               ) : tasks.length === 0 ? (
-                <div className="border border-dashed border-border rounded-lg p-8 text-center">
+                <div className="border border-dashed border-border rounded-lg p-8 text-center bg-secondary/20">
                   <p className="text-sm font-mono text-muted-foreground">No autonomous tasks yet.</p>
                   <p className="text-xs text-muted-foreground mt-2">Start with a concrete objective. CLRK will turn it into tracked work.</p>
                 </div>
@@ -341,7 +446,7 @@ const AutonomyCenter = () => {
                     const doneSteps = task.plan?.filter((step) => step.status === 'completed').length || 0;
                     const totalSteps = task.plan?.length || 0;
                     return (
-                      <div key={task.id} className="border border-border/60 rounded-lg p-4 bg-secondary/20">
+                      <div key={task.id} className="command-surface rounded-lg p-4 hover-lift">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -398,7 +503,48 @@ const AutonomyCenter = () => {
           </div>
 
           <div className="lg:col-span-5 space-y-6">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card rounded-xl p-5">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-lg p-5">
+              <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
+                <Bot className="w-4 h-4" /> Subagent Squad
+              </h2>
+              {subagents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No internal subagents deployed yet. Voice prompts like “CLRK, deploy agents to handle this” will create them here.</p>
+              ) : (
+                <div className="space-y-3">
+                  {subagents.slice(0, 8).map((agent) => {
+                    const latestRun = subagentRuns.find((run) => run.subagent_id === agent.id);
+                    return (
+                      <div key={agent.id} className="command-surface rounded-lg p-3 hover-lift">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs">{agent.name}</span>
+                              <Badge variant="outline" className="font-mono text-[9px]">{agent.status}</Badge>
+                              <Badge variant="secondary" className="font-mono text-[9px]">{AUTONOMY_LABELS[agent.autonomy_level]}</Badge>
+                            </div>
+                            <p className="text-[10px] text-primary/80 mt-1">{agent.role}</p>
+                          </div>
+                          {agent.domain && <span className="text-[9px] font-mono text-muted-foreground capitalize">{agent.domain}</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{agent.mission}</p>
+                        {latestRun && (
+                          <div className="mt-3 border-t border-border/40 pt-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-mono text-muted-foreground">Run: {latestRun.status}</span>
+                              <span className="text-[9px] font-mono text-muted-foreground">{new Date(latestRun.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {latestRun.output?.summary && <p className="text-xs text-green-400/80 mt-1 line-clamp-2">{latestRun.output.summary}</p>}
+                            {latestRun.error_message && <p className="text-xs text-destructive mt-1 line-clamp-2">{latestRun.error_message}</p>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card rounded-lg p-5">
               <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
                 <ShieldAlert className="w-4 h-4" /> Approval Firewall
               </h2>
@@ -407,7 +553,7 @@ const AutonomyCenter = () => {
               ) : (
                 <div className="space-y-3">
                   {pendingApprovals.slice(0, 5).map((msg) => (
-                    <div key={msg.id} className="border border-yellow-400/20 bg-yellow-400/5 rounded-lg p-3">
+                    <div key={msg.id} className="border border-yellow-400/25 bg-yellow-400/5 rounded-lg p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs">{msg.agent_registry?.agent_name || 'External Agent'}</span>
                         <Badge variant="outline" className="font-mono text-[9px]">{msg.message_type}</Badge>
@@ -432,7 +578,41 @@ const AutonomyCenter = () => {
               )}
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card rounded-xl p-5">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="glass-card rounded-lg p-5">
+              <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
+                <Globe2 className="w-4 h-4" /> Total Context
+              </h2>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {[
+                  { label: 'History events', value: historyEvents.length },
+                  { label: 'Memory facts', value: memories.length },
+                  { label: 'Summaries', value: summaries.length },
+                  { label: 'Web tools', value: 'Ready' },
+                ].map((item) => (
+                  <div key={item.label} className="command-surface rounded-lg p-3">
+                    <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">{item.label}</p>
+                    <p className="font-mono text-sm mt-1">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                {historyEvents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">CLRK can now index approved imports, task outcomes, device observations, and important events into searchable history.</p>
+                ) : (
+                  historyEvents.slice(0, 3).map((event) => (
+                    <div key={event.id} className="border border-border/50 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="secondary" className="font-mono text-[9px]">{event.source}</Badge>
+                        <span className="text-[9px] font-mono text-muted-foreground">{new Date(event.occurred_at).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-xs text-foreground/85 mt-2 line-clamp-2">{event.title || event.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card rounded-lg p-5">
               <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
                 <Brain className="w-4 h-4" /> Long-Term Memory
               </h2>
@@ -441,7 +621,7 @@ const AutonomyCenter = () => {
               ) : (
                 <div className="space-y-2">
                   {memories.map((memory) => (
-                    <div key={memory.id} className="border border-border/50 rounded-lg p-3">
+                    <div key={memory.id} className="command-surface rounded-lg p-3">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <Badge variant="secondary" className="font-mono text-[9px]">{memory.kind}</Badge>
                         <span className="text-[9px] font-mono text-muted-foreground">I{memory.importance ?? 5}</span>
@@ -453,7 +633,7 @@ const AutonomyCenter = () => {
               )}
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card rounded-xl p-5">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card rounded-lg p-5">
               <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
                 <Sparkles className="w-4 h-4" /> Autonomy Levels
               </h2>
@@ -470,7 +650,7 @@ const AutonomyCenter = () => {
               </div>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card rounded-xl p-5">
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card rounded-lg p-5">
               <h2 className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2 mb-4">
                 <Bot className="w-4 h-4" /> Session Continuity
               </h2>

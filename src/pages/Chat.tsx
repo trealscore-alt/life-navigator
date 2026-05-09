@@ -47,7 +47,8 @@ type AgentClientResult = {
   is_error?: boolean;
 };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-agent`;
+const AGENT_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-agent`;
+const LEGACY_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-chat`;
 
 const parseDataUrl = (dataUrl: string) => {
   const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
@@ -59,6 +60,37 @@ const parseDataUrl = (dataUrl: string) => {
 
 const getErrorMessage = (err: unknown, fallback: string) =>
   err instanceof Error ? err.message : fallback;
+
+const readLegacyChatStream = async (resp: Response) => {
+  if (!resp.body) return await resp.text();
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let output = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> };
+        output += chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
+      } catch {
+        output += payload;
+      }
+    }
+  }
+
+  return output.trim();
+};
 
 const Chat = () => {
   const { user } = useAuth();
@@ -77,12 +109,13 @@ const Chat = () => {
 
   // Bluetooth integration — auto-initialize on native
   const bluetooth = useBluetooth();
+  const { isNative, initialized, initialize } = bluetooth;
 
   useEffect(() => {
-    if (bluetooth.isNative && !bluetooth.initialized) {
-      bluetooth.initialize();
+    if (isNative && !initialized) {
+      initialize();
     }
-  }, [bluetooth.isNative, bluetooth.initialized, bluetooth.initialize]);
+  }, [isNative, initialized, initialize]);
 
   // Build Bluetooth state snapshot for the API
   const getBluetoothState = useCallback(() => {
@@ -278,18 +311,105 @@ const Chat = () => {
         return { ok: true, message: 'Bluetooth monitoring stopped.', bluetoothState: getBluetoothState() };
       case 'capture_image':
         throw new Error('Camera capture needs a user tap. Ask the user to press the camera button.');
+      case 'robot_status':
+        return {
+          robotId: 'clrk-app-bridge',
+          name: 'CLRK App Robot Bridge',
+          mode: 'observe',
+          moving: false,
+          capabilities: ['robot_status', 'robot_say', 'robot_stop'],
+          safety: {
+            emergencyStop: false,
+            notes: ['No dedicated robot runtime is connected to this app session. Install robot-runtime on the robot for physical tools.'],
+          },
+        };
+      case 'robot_say':
+        if (!isMuted && typeof toolInput.text === 'string') {
+          voiceConv.speak(toolInput.text);
+        }
+        return { spoken: String(toolInput.text || '') };
+      case 'robot_stop':
+        return { stopped: true, message: 'No dedicated robot runtime connected; app bridge is already stationary.' };
+      case 'robot_read_sensors':
+      case 'robot_capture_image':
+      case 'robot_move_base':
+      case 'robot_set_mode':
+        throw new Error('Install and run robot-runtime on the robot to execute physical robot tools.');
+      case 'smart_device_status':
+        return {
+          meshId: 'clrk-app-device-bridge',
+          status: 'app_bridge_only',
+          activeConversationEndpoints: ['phone'],
+          transports: ['bluetooth_web_preview', 'camera', 'microphone', 'speaker'],
+          note: 'Install device-mesh on dedicated hardware or native app builds for glasses, VR, vehicle, Matter, and robot endpoints.',
+          bluetoothState: getBluetoothState(),
+        };
+      case 'smart_device_scan':
+        return {
+          discovered: [],
+          category: toolInput.category || 'all',
+          transport: toolInput.transport || 'any',
+          note: 'Browser bridge can only expose limited Bluetooth preview. Use Device Hub or install device-mesh for universal discovery.',
+        };
+      case 'smart_device_start_conversation':
+        return {
+          sessionId: conversationId || 'current-chat-session',
+          mode: toolInput.mode || 'hands_free',
+          deviceId: toolInput.device_id,
+          routedTo: 'current CLRK app chat and voice session',
+        };
+      case 'smart_device_stop_conversation':
+        return { stopped: true, deviceId: toolInput.device_id, summary: 'Stopped app-bridge conversation endpoint.' };
+      case 'smart_device_command':
+      case 'smart_device_connect':
+      case 'smart_device_read_context':
+        throw new Error('Install and run device-mesh on the target hardware to execute smart-device mesh tools.');
       default:
         throw new Error(`Unknown client tool: ${call.name}`);
     }
-  }, [bluetooth, getBluetoothState, toast]);
+  }, [bluetooth, conversationId, getBluetoothState, isMuted, toast, voiceConv]);
 
   const runAgent = useCallback(async (initialMessages: AgentMessage[], voiceMode: boolean) => {
     const token = await getAuthToken();
     let agentMessages = initialMessages;
     let clientToolResults: AgentClientResult[] | undefined;
 
+    const runLegacyChat = async () => {
+      const resp = await fetch(LEGACY_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          messages: initialMessages.map((message) => ({
+            role: message.role,
+            content: Array.isArray(message.content)
+              ? message.content
+                  .filter((block): block is { type: 'text'; text: string } =>
+                    typeof block === 'object' && block !== null && block.type === 'text' && typeof block.text === 'string'
+                  )
+                  .map((block) => block.text)
+                  .join('\n')
+              : message.content,
+          })),
+          userId: user?.id,
+          conversationId,
+          voiceMode,
+          bluetoothState: getBluetoothState(),
+        }),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(typeof errData.error === 'string' ? errData.error : `Error ${resp.status}`);
+      }
+
+      return await readLegacyChatStream(resp);
+    };
+
     for (let step = 0; step < 8; step++) {
-      const resp = await fetch(CHAT_URL, {
+      const resp = await fetch(AGENT_CHAT_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -303,6 +423,10 @@ const Chat = () => {
           ...(clientToolResults ? { clientToolResults } : {}),
         }),
       });
+
+      if (resp.status === 404) {
+        return await runLegacyChat();
+      }
 
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
@@ -335,7 +459,7 @@ const Chat = () => {
     }
 
     return 'I hit my tool loop limit before finishing that. Try the request again in a smaller step.';
-  }, [conversationId, executeClientTool, getBluetoothState]);
+  }, [conversationId, executeClientTool, getBluetoothState, user?.id]);
 
   const sendUserMessage = async (text: string, voiceMode: boolean) => {
     if (!text.trim() || isLoading || !user || !conversationId) return;
@@ -436,15 +560,18 @@ const Chat = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col relative">
-      <div className="absolute inset-0 grid-bg opacity-5" />
+    <div className="h-screen clrk-shell flex flex-col relative overflow-hidden">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Header */}
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-4 sm:px-6 py-3 flex items-center justify-between">
+      <header className="relative z-10 control-bar px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link to="/dashboard">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
           </Link>
+          <div className="agent-mark hidden h-9 w-9 rounded-lg sm:inline-flex">
+            <Bot className="h-5 w-5" />
+          </div>
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
             <p className="text-[10px] font-mono text-muted-foreground flex items-center gap-2">
@@ -495,8 +622,11 @@ const Chat = () => {
             animate={{ opacity: 1 }}
             className="flex flex-col items-center justify-center h-full text-center"
           >
+            <div className="agent-mark h-16 w-16 rounded-lg mb-5">
+              <Bot className="h-8 w-8" />
+            </div>
             <div className="text-6xl font-mono neon-text font-bold mb-4">CLRK</div>
-            <p className="text-muted-foreground text-sm max-w-md">
+            <p className="text-muted-foreground text-sm max-w-md text-balance">
               Your personal intelligence system is ready. Ask me anything about your goals, career, finances, health, relationships, or life strategy.
             </p>
             <div className="flex flex-wrap justify-center gap-2 mt-6">
@@ -504,7 +634,7 @@ const Chat = () => {
                 <button
                   key={s}
                   onClick={() => { setInput(s); textareaRef.current?.focus(); }}
-                  className="text-xs font-mono px-3 py-2 rounded-lg bg-secondary/50 border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/30 transition-all"
+                  className="text-xs font-mono px-3 py-2 rounded-md bg-secondary/50 border border-border/70 text-muted-foreground hover:text-primary hover:border-primary/40 transition-all"
                 >
                   {s}
                 </button>
@@ -521,14 +651,14 @@ const Chat = () => {
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center flex-shrink-0">
+              <div className="agent-mark w-8 h-8 rounded-lg flex-shrink-0">
                 <Bot className="w-4 h-4 text-primary" />
               </div>
             )}
             <div className={`max-w-[85%] sm:max-w-[75%] rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 ${
               msg.role === 'user'
-                ? 'bg-accent/20 border border-accent/30 text-foreground'
-                : 'glass-card border border-border/50'
+                ? 'bg-accent/15 border border-accent/30 text-foreground shadow-[0_18px_60px_-48px_hsl(var(--accent)/0.85)]'
+                : 'glass-card border border-border/70'
             }`}>
               {msg.imageBase64 && (
                 <div className="mb-2">
@@ -548,7 +678,7 @@ const Chat = () => {
               )}
             </div>
             {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/35 flex items-center justify-center flex-shrink-0">
                 <User className="w-4 h-4 text-accent" />
               </div>
             )}
@@ -560,7 +690,7 @@ const Chat = () => {
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
               <Bot className="w-4 h-4 text-primary animate-pulse" />
             </div>
-            <div className="glass-card border border-border/50 rounded-xl px-4 py-3">
+            <div className="glass-card border border-border/70 rounded-lg px-4 py-3">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
             </div>
           </div>
@@ -570,7 +700,7 @@ const Chat = () => {
       </div>
 
       {/* Input */}
-      <div className="relative z-10 border-t border-border/50 bg-card/40 backdrop-blur-xl p-3 sm:p-4">
+      <div className="relative z-10 border-t border-border/60 bg-card/55 backdrop-blur-2xl p-3 sm:p-4">
         {/* Pending image preview */}
         {pendingImage && (
           <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
@@ -584,7 +714,7 @@ const Chat = () => {
             </Button>
           </div>
         )}
-        <div className="max-w-4xl mx-auto flex gap-2 sm:gap-3">
+        <div className="max-w-4xl mx-auto command-surface rounded-lg p-2 flex gap-2 sm:gap-3">
           <Button
             onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
             disabled={isLoading || voiceConv.isSpeaking}
@@ -605,7 +735,7 @@ const Chat = () => {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={pendingImage ? 'Ask CLRK about this image...' : voiceConv.isListening ? 'Listening...' : 'Message CLRK...'}
-            className="min-h-[44px] max-h-32 resize-none bg-secondary/50 border-border/50 focus:border-primary font-sans text-sm"
+            className="min-h-[44px] max-h-32 resize-none bg-background/40 border-border/70 focus:border-primary font-sans text-sm"
             rows={1}
           />
           <Button

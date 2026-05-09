@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import BiometricLock from '@/components/BiometricLock';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Brain, Cpu, Shield, Sparkles } from 'lucide-react';
 
 const Auth = () => {
   const { user, loading, signIn, signUp } = useAuth();
@@ -70,38 +70,57 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 grid-bg opacity-30" />
-      <div className="absolute inset-0 scanline-overlay opacity-20" />
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-20"
-        style={{ background: 'radial-gradient(circle, hsl(185 100% 50% / 0.15), transparent 70%)' }}
-      />
+    <div className="min-h-screen clrk-shell flex items-center justify-center relative overflow-hidden px-4 py-8">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="relative z-10 w-full max-w-md px-6"
+        className="relative z-10 grid w-full max-w-5xl grid-cols-1 gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center"
       >
-        <div className="text-center mb-10">
+        <div className="space-y-8">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 1, type: 'spring' }}
+            className="space-y-5"
           >
-            <h1 className="text-6xl font-mono font-bold neon-text tracking-wider">CLRK</h1>
-            <div className="h-[2px] w-24 mx-auto mt-3 bg-gradient-to-r from-transparent via-primary to-transparent" />
+            <div className="agent-mark h-14 w-14 rounded-lg">
+              <Brain className="h-7 w-7" />
+            </div>
+            <div>
+              <h1 className="text-6xl sm:text-7xl font-mono font-bold neon-text tracking-wider">CLRK</h1>
+              <div className="mt-4 h-px w-52 bg-gradient-to-r from-primary via-accent to-transparent" />
+            </div>
           </motion.div>
-          <p className="text-muted-foreground mt-4 text-sm tracking-widest uppercase">
-            Cognitive Life Resource Kernel
-          </p>
-          <p className="text-foreground/80 mt-2 text-lg">
-            Your Personal Intelligence System
+          <div>
+            <p className="font-mono text-xs uppercase tracking-[0.34em] text-primary/80">
+              Cognitive Life Resource Kernel
+            </p>
+            <p className="mt-4 max-w-xl text-2xl font-semibold leading-tight text-balance text-foreground">
+              A persistent command layer for your goals, devices, agents, and environment.
+            </p>
+          </div>
+          <div className="grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { icon: Sparkles, label: 'Autonomy Core' },
+              { icon: Cpu, label: 'Device Mesh' },
+              { icon: Shield, label: 'Safety Gates' },
+            ].map((item) => (
+              <div key={item.label} className="command-surface rounded-lg p-3">
+                <item.icon className="mb-3 h-4 w-4 text-primary" />
+                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{item.label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="status-pill w-fit">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_10px_hsl(var(--accent))]" />
+            System Online
           </p>
         </div>
 
-        <div className="glass-card neon-border rounded-xl p-8">
+        <div className="glass-card neon-border rounded-lg p-6 sm:p-8">
           {isForgotPassword ? (
             <ForgotPasswordForm
               forgotEmail={forgotEmail}
@@ -119,7 +138,7 @@ const Auth = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="agent@clrk.io"
-                    className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+                    className="mt-1.5 bg-secondary/50 border-border/70 focus:border-primary"
                     required
                   />
                 </div>
@@ -130,7 +149,7 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="mt-1.5 bg-secondary/50 border-border/50 focus:border-primary"
+                    className="mt-1.5 bg-secondary/50 border-border/70 focus:border-primary"
                     required
                     minLength={6}
                   />
@@ -149,7 +168,7 @@ const Auth = () => {
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_hsl(var(--neon-glow)/0.5)]"
+                  className="w-full font-mono uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_28px_-12px_hsl(var(--neon-glow)/0.9)]"
                 >
                   {submitting ? 'Processing...' : isSignUp ? 'Initialize Agent' : 'Access System'}
                 </Button>
@@ -167,16 +186,12 @@ const Auth = () => {
           )}
         </div>
 
-        <div className="mt-8 flex items-center justify-center gap-2 text-xs font-mono text-muted-foreground">
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse-glow" />
-          <span>SYSTEM ONLINE</span>
-          <span className="text-border">|</span>
-          <span>v1.0.0</span>
-        </div>
       </motion.div>
     </div>
   );
 };
+
+type ToastFn = ReturnType<typeof useToast>['toast'];
 
 const ForgotPasswordForm = ({
   forgotEmail,
@@ -187,7 +202,7 @@ const ForgotPasswordForm = ({
   forgotEmail: string;
   setForgotEmail: (v: string) => void;
   onBack: () => void;
-  toast: any;
+  toast: ToastFn;
 }) => {
   const [sending, setSending] = useState(false);
 

@@ -20,13 +20,61 @@ interface TranscriptEntry {
   timestamp: Date;
 }
 
+interface ClrkLiveResponse {
+  reply?: string;
+  error?: string;
+}
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'Failed to communicate with CLRK';
+
 const LiveMode = () => {
   const { user } = useAuth();
   const { parseCommand } = useVoiceCommands();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const [isActive, setIsActive] = useState(false);
@@ -55,13 +103,6 @@ const LiveMode = () => {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcript]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopAll();
-    };
-  }, []);
 
   const captureFrame = useCallback((): string | null => {
     if (!videoRef.current || !canvasRef.current || !cameraOn) return null;
@@ -107,6 +148,7 @@ const LiveMode = () => {
       glasses: 'smart glasses',
       car: 'vehicle system',
       home: 'home devices',
+      vr: 'VR headset',
       watch: 'smartwatch',
       headphones: 'headphones',
       speaker: 'smart speaker',
@@ -136,6 +178,14 @@ const LiveMode = () => {
       case 'status':
         response = `Checking status of your ${targetLabel}. On a native build, I'd pull live connection states and recent readings. Check Device Hub for the full picture.`;
         toast.info(`CLRK: Checking ${targetLabel} status...`);
+        break;
+      case 'conversation':
+        response = `Starting a ${cmd.mode || 'hands-free'} CLRK conversation endpoint on your ${targetLabel}. Once the Device Mesh runtime is installed there, I'll keep this same conversation continuous across the app, glasses, vehicle, VR, and robot.`;
+        toast.info(`CLRK: Routing conversation to ${targetLabel}...`);
+        break;
+      case 'context':
+        response = `Reading context from your ${targetLabel}. With the Device Mesh runtime connected, I'll use its live sensors, camera, scene, or telemetry feed and keep the conversation grounded in what that device sees.`;
+        toast.info(`CLRK: Reading ${targetLabel} context...`);
         break;
     }
 
@@ -203,12 +253,12 @@ const LiveMode = () => {
       );
 
       if (!response.ok) {
-        const err = await response.json();
+        const err = (await response.json()) as ClrkLiveResponse;
         throw new Error(err.error || 'Failed to reach CLRK');
       }
 
-      const data = await response.json();
-      const reply = data.reply;
+      const data = (await response.json()) as ClrkLiveResponse;
+      const reply = data.reply || 'I heard you, but I did not receive a complete CLRK response.';
 
       const assistantEntry: TranscriptEntry = {
         id: crypto.randomUUID(),
@@ -220,9 +270,9 @@ const LiveMode = () => {
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
 
       speak(reply);
-    } catch (error: any) {
+    } catch (error) {
       console.error('CLRK Live error:', error);
-      toast.error(error.message || 'Failed to communicate with CLRK');
+      toast.error(getErrorMessage(error));
     } finally {
       setIsProcessing(false);
     }
@@ -255,7 +305,8 @@ const LiveMode = () => {
   }, []);
 
   const startMic = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error('Speech recognition not supported in this browser.');
       return;
@@ -266,7 +317,7 @@ const LiveMode = () => {
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       let interim = '';
       let final = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -294,7 +345,7 @@ const LiveMode = () => {
         try { recognition.start(); } catch { /* ignore */ }
       }
     };
-    recognition.onerror = (e: any) => {
+    recognition.onerror = (e: SpeechRecognitionErrorEventLike) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         console.error('Speech recognition error:', e.error);
       }
@@ -330,6 +381,13 @@ const LiveMode = () => {
     setIsActive(false);
     setIsSpeaking(false);
   }, [stopCamera, stopMic]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAll();
+    };
+  }, [stopAll]);
 
   const statusColor = isProcessing ? 'bg-yellow-500' : isSpeaking ? 'bg-primary' : isListening ? 'bg-green-500' : isWakeListening ? 'bg-cyan-500' : 'bg-muted';
   const statusText = isProcessing ? 'Processing...' : isSpeaking ? 'CLRK Speaking' : isListening ? 'Listening...' : isWakeListening ? '"Hey CLRK" ready' : 'Standby';

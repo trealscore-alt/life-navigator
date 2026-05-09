@@ -199,10 +199,10 @@ const SocialMedia = () => {
   }
 
   return (
-    <div className="min-h-screen relative">
+    <div className="min-h-screen clrk-shell relative">
       <div className="absolute inset-0 grid-bg opacity-5" />
 
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl px-4 sm:px-6 py-3 flex items-center justify-between">
+      <header className="relative z-10 control-bar px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link to="/dashboard">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>

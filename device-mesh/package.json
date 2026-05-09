@@ -1,0 +1,25 @@
+{
+  "name": "@clrk/device-mesh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLRK universal smart-device mesh for glasses, VR, vehicles, wearables, smart home, and robots.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "clrk-device-mesh": "dist/bin/clrk-device-mesh.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/bin/clrk-device-mesh.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "typescript": "^5.8.3"
+  }
+}

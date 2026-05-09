@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBluetooth, BluetoothDevice, DeviceReading } from '@/hooks/useBluetooth';
@@ -16,6 +16,18 @@ import {
 } from 'lucide-react';
 
 const PROCESS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-device-data`;
+
+interface DeviceAnalysis {
+  insight?: string;
+  alerts?: string[];
+  goalUpdates?: { goalId: string; newProgress: number }[];
+  deviceInsights?: { device: string; status: string; note: string }[];
+}
+
+interface ProcessDeviceDataResponse {
+  analysis?: DeviceAnalysis;
+  goalUpdates?: { goalId: string; newProgress: number }[];
+}
 
 function getRssiIcon(rssi: number | null) {
   if (rssi === null) return Signal;
@@ -99,15 +111,7 @@ const DeviceHub = () => {
     }
   }, [liveReadings]);
 
-  // Auto-sync every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (syncBufferRef.current.length > 0 && user) syncToCloud();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  const syncToCloud = async () => {
+  const syncToCloud = useCallback(async () => {
     if (!user || syncBufferRef.current.length === 0 || syncing) return;
     setSyncing(true);
     const readings = syncBufferRef.current.map(r => ({
@@ -126,7 +130,7 @@ const DeviceHub = () => {
         body: JSON.stringify({ userId: user.id, readings }),
       });
       if (resp.ok) {
-        const data = await resp.json();
+        const data = (await resp.json()) as ProcessDeviceDataResponse;
         if (data.analysis) {
           setLastAnalysis(data.analysis);
           if (data.analysis.insight) toast({ title: 'CLRK Device Insight', description: data.analysis.insight });
@@ -140,11 +144,29 @@ const DeviceHub = () => {
           }
         }
       }
-    } catch (err: any) { console.error('Sync error:', err); }
+    } catch (err) {
+      console.error('Sync error:', err);
+    }
     setSyncing(false);
-  };
+  }, [syncing, toast, user]);
 
-  const handleScan = async () => { scanning ? await stopScan() : await startScan(15000); };
+  // Auto-sync every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (syncBufferRef.current.length > 0 && user) {
+        void syncToCloud();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [syncToCloud, user]);
+
+  const handleScan = async () => {
+    if (scanning) {
+      await stopScan();
+    } else {
+      await startScan(15000);
+    }
+  };
   const handleConnect = async (device: BluetoothDevice) => {
     toast({ title: `Connecting to ${device.name || 'device'}...` });
     await connectDevice(device.deviceId);
@@ -191,11 +213,11 @@ const DeviceHub = () => {
   };
 
   return (
-    <div className="min-h-screen relative">
-      <div className="absolute inset-0 grid-bg opacity-10" />
+    <div className="min-h-screen clrk-shell relative">
+      <div className="absolute inset-0 scanline-overlay opacity-10" />
 
       {/* Header */}
-      <header className="relative z-10 border-b border-border/50 bg-card/40 backdrop-blur-xl">
+      <header className="relative z-10 control-bar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <Link to="/dashboard"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
@@ -240,7 +262,7 @@ const DeviceHub = () => {
         )}
 
         {error && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-xl p-4 border border-destructive/30">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-lg p-4 border border-destructive/30">
             <div className="flex items-center gap-3">
               <BluetoothOff className="w-5 h-5 text-destructive" />
               <p className="text-xs font-mono text-destructive">{error}</p>
@@ -275,7 +297,7 @@ const DeviceHub = () => {
                       const Icon = getReadingIcon(r.dataType);
                       const color = getReadingColor(r.dataType);
                       return (
-                        <motion.div key={`${r.deviceId}:${r.dataType}`} className="glass-card rounded-xl p-4 neon-border" initial={{ scale: 0.95 }} animate={{ scale: 1 }}>
+                        <motion.div key={`${r.deviceId}:${r.dataType}`} className="glass-card rounded-lg p-4 neon-border" initial={{ scale: 0.95 }} animate={{ scale: 1 }}>
                           <div className="flex items-center gap-2 mb-2">
                             <Icon className={`w-4 h-4 ${color}`} />
                             <span className="text-[10px] font-mono text-muted-foreground capitalize">{r.dataType.replace(/_/g, ' ')}</span>
@@ -339,7 +361,7 @@ const DeviceHub = () => {
               <Radio className="w-4 h-4" /> Reading Log
               <Badge variant="outline" className="text-[8px] font-mono ml-auto">{liveReadings.length} readings</Badge>
             </h3>
-            <div className="glass-card rounded-xl p-3 max-h-48 overflow-y-auto space-y-1">
+            <div className="glass-card rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">
               {liveReadings.slice(0, 40).map((r, i) => {
                 const Icon = getReadingIcon(r.dataType);
                 const color = getReadingColor(r.dataType);
@@ -381,7 +403,7 @@ const DeviceHub = () => {
           </h3>
 
           {devices.length === 0 ? (
-            <div className="glass-card rounded-xl p-12 text-center">
+            <div className="glass-card rounded-lg p-12 text-center">
               <Bluetooth className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
               <p className="text-muted-foreground text-sm font-mono">
                 {scanning ? 'Searching for all nearby devices...' : 'Tap "Scan" to discover nearby Bluetooth devices'}
@@ -403,7 +425,7 @@ const DeviceHub = () => {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
-                      className={`glass-card rounded-xl p-4 cursor-pointer transition-all hover:neon-border ${
+                      className={`glass-card rounded-lg p-4 cursor-pointer transition-all hover:neon-border ${
                         isMonitoring ? 'border border-primary/40 shadow-[0_0_15px_-5px_hsl(var(--primary)/0.3)]'
                         : device.connected ? 'border border-green-400/30' : ''
                       } ${isExpanded ? 'neon-border' : ''}`}
