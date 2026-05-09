@@ -9,6 +9,7 @@ import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import AgentNetwork from "./pages/AgentNetwork";
+import AutonomyCenter from "./pages/AutonomyCenter";
 import DeviceHub from "./pages/DeviceHub";
 import LiveMode from "./pages/LiveMode";
 import SettingsPage from "./pages/SettingsPage";
@@ -37,6 +38,7 @@ const AppRoutes = () => (
     <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
     <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+    <Route path="/autonomy" element={<ProtectedRoute><AutonomyCenter /></ProtectedRoute>} />
     <Route path="/agents" element={<ProtectedRoute><AgentNetwork /></ProtectedRoute>} />
     <Route path="/devices" element={<ProtectedRoute><DeviceHub /></ProtectedRoute>} />
     <Route path="/live" element={<ProtectedRoute><LiveMode /></ProtectedRoute>} />

@@ -13,9 +13,11 @@ import {
   MessageSquare, Target, LogOut, Zap, TrendingUp,
   Heart, Brain, DollarSign, Briefcase, Activity, Settings,
   Radio, Bluetooth, Eye, Shield, ChevronRight, Clock, Cpu, Share2,
+  Bot,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-const DOMAIN_ICONS: Record<string, any> = {
+const DOMAIN_ICONS: Record<string, LucideIcon> = {
   work: Briefcase, finance: DollarSign, health: Activity,
   relationships: Heart, learning: Brain, lifestyle: Zap, ambition: TrendingUp,
 };
@@ -137,6 +139,11 @@ const Dashboard = () => {
             <Link to="/chat">
               <Button size="sm" variant="outline" className="font-mono text-xs">
                 <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> <span className="hidden sm:inline">Talk to</span> CLRK
+              </Button>
+            </Link>
+            <Link to="/autonomy">
+              <Button size="sm" variant="outline" className="font-mono text-xs">
+                <Bot className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">Autonomy</span>
               </Button>
             </Link>
             <Link to="/agents">

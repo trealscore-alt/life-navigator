@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Send, Loader2, Bot, User, Mic, MicOff, Volume2, VolumeX, Image, Bluetooth } from 'lucide-react';
 import { CameraCapture } from '@/components/CameraCapture';
 import { useVoiceConversation } from '@/hooks/useVoiceConversation';
-import { useBluetooth } from '@/hooks/useBluetooth';
+import { useBluetooth, type DeviceReading } from '@/hooks/useBluetooth';
 
 interface Message {
   id?: string;
@@ -19,7 +19,46 @@ interface Message {
   imageBase64?: string; // For displaying captured images in chat
 }
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-chat`;
+type AgentContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+
+type AgentMessage = {
+  role: 'user' | 'assistant';
+  content: string | AgentContentBlock[] | Array<Record<string, unknown>>;
+};
+
+type AgentClientCall = {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+};
+
+type AgentResponse = {
+  done: boolean;
+  messages: AgentMessage[];
+  finalText?: string;
+  pendingClientCalls?: AgentClientCall[];
+};
+
+type AgentClientResult = {
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+};
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-agent`;
+
+const parseDataUrl = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+  return {
+    mediaType: match?.[1] || 'image/jpeg',
+    data: match?.[2] || dataUrl,
+  };
+};
+
+const getErrorMessage = (err: unknown, fallback: string) =>
+  err instanceof Error ? err.message : fallback;
 
 const Chat = () => {
   const { user } = useAuth();
@@ -47,7 +86,7 @@ const Chat = () => {
 
   // Build Bluetooth state snapshot for the API
   const getBluetoothState = useCallback(() => {
-    const latestByType: Record<string, any> = {};
+    const latestByType: Record<string, DeviceReading> = {};
     for (const r of bluetooth.liveReadings) {
       const key = `${r.deviceId}:${r.dataType}`;
       if (!latestByType[key]) latestByType[key] = r;
@@ -61,7 +100,7 @@ const Chat = () => {
         serviceNames: d.serviceNames,
       })),
       scanning: bluetooth.scanning,
-      liveReadings: Object.values(latestByType).slice(0, 15).map((r: any) => ({
+      liveReadings: Object.values(latestByType).slice(0, 15).map((r) => ({
         deviceName: r.deviceName,
         dataType: r.dataType,
         value: r.value,
@@ -113,7 +152,7 @@ const Chat = () => {
             if (deviceId) await bluetooth.stopMonitoring(deviceId);
             break;
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(`BT command ${action} failed:`, err);
       }
     }
@@ -169,18 +208,22 @@ const Chat = () => {
   toggleVoiceModeRef.current = voiceConv.toggleVoiceMode;
   isVoiceModeRef.current = voiceConv.isVoiceMode;
 
-  // Build API message content — supports multimodal (text + image)
-  const buildApiMessages = (msgs: Message[]) => {
+  // Build API message content — supports Anthropic-style multimodal blocks.
+  const buildApiMessages = (msgs: Message[]): AgentMessage[] => {
     return msgs.map(m => {
       if (m.imageBase64) {
-        // Multimodal message with image
+        const image = parseDataUrl(m.imageBase64);
         return {
           role: m.role,
           content: [
             ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
             {
-              type: 'image_url' as const,
-              image_url: { url: m.imageBase64 },
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: image.mediaType,
+                data: image.data,
+              },
             },
           ],
         };
@@ -195,11 +238,111 @@ const Chat = () => {
     toast({ title: '📸 Image attached', description: 'Add a message or send directly — CLRK will analyze what you captured.' });
   };
 
-  const sendMessageFromVoice = async (text: string) => {
+  const getAuthToken = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const token = data.session?.access_token;
+    if (!token) throw new Error('Sign in again to reach CLRK.');
+    return token;
+  };
+
+  const executeClientTool = useCallback(async (call: AgentClientCall) => {
+    const toolInput = call.input || {};
+
+    switch (call.name) {
+      case 'bluetooth_status':
+        return getBluetoothState();
+      case 'bluetooth_scan':
+        toast({ title: 'CLRK is scanning for devices...' });
+        await bluetooth.startScan(Number(toolInput.duration_ms) || 15000);
+        return { ok: true, message: 'Bluetooth scan started.', bluetoothState: getBluetoothState() };
+      case 'bluetooth_stop_scan':
+        await bluetooth.stopScan();
+        return { ok: true, message: 'Bluetooth scan stopped.', bluetoothState: getBluetoothState() };
+      case 'bluetooth_connect':
+        if (!toolInput.device_id) throw new Error('device_id required');
+        toast({ title: 'CLRK is connecting to device...' });
+        await bluetooth.connectDevice(String(toolInput.device_id));
+        return { ok: true, message: 'Bluetooth device connected.', bluetoothState: getBluetoothState() };
+      case 'bluetooth_disconnect':
+        if (!toolInput.device_id) throw new Error('device_id required');
+        await bluetooth.disconnectDevice(String(toolInput.device_id));
+        return { ok: true, message: 'Bluetooth device disconnected.', bluetoothState: getBluetoothState() };
+      case 'bluetooth_monitor':
+        if (!toolInput.device_id) throw new Error('device_id required');
+        await bluetooth.startMonitoring(String(toolInput.device_id));
+        return { ok: true, message: 'Bluetooth monitoring started.', bluetoothState: getBluetoothState() };
+      case 'bluetooth_stop_monitor':
+        if (!toolInput.device_id) throw new Error('device_id required');
+        await bluetooth.stopMonitoring(String(toolInput.device_id));
+        return { ok: true, message: 'Bluetooth monitoring stopped.', bluetoothState: getBluetoothState() };
+      case 'capture_image':
+        throw new Error('Camera capture needs a user tap. Ask the user to press the camera button.');
+      default:
+        throw new Error(`Unknown client tool: ${call.name}`);
+    }
+  }, [bluetooth, getBluetoothState, toast]);
+
+  const runAgent = useCallback(async (initialMessages: AgentMessage[], voiceMode: boolean) => {
+    const token = await getAuthToken();
+    let agentMessages = initialMessages;
+    let clientToolResults: AgentClientResult[] | undefined;
+
+    for (let step = 0; step < 8; step++) {
+      const resp = await fetch(CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          messages: agentMessages,
+          conversationId,
+          voiceMode,
+          bluetoothState: getBluetoothState(),
+          ...(clientToolResults ? { clientToolResults } : {}),
+        }),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
+
+      const data = (await resp.json()) as AgentResponse;
+      agentMessages = data.messages;
+      clientToolResults = undefined;
+      if (data.done) return data.finalText || '';
+
+      const clientResults: AgentClientResult[] = [];
+      for (const call of data.pendingClientCalls || []) {
+        try {
+          clientResults.push({
+            tool_use_id: call.id,
+            content: JSON.stringify(await executeClientTool(call)),
+          });
+        } catch (err: unknown) {
+          clientResults.push({
+            tool_use_id: call.id,
+            content: JSON.stringify({ error: getErrorMessage(err, 'Client tool failed') }),
+            is_error: true,
+          });
+        }
+      }
+
+      if (clientResults.length === 0) return '';
+      clientToolResults = clientResults;
+    }
+
+    return 'I hit my tool loop limit before finishing that. Try the request again in a smaller step.';
+  }, [conversationId, executeClientTool, getBluetoothState]);
+
+  const sendUserMessage = async (text: string, voiceMode: boolean) => {
     if (!text.trim() || isLoading || !user || !conversationId) return;
     const currentImage = pendingImage;
     const userMsg: Message = { role: 'user', content: text.trim(), imageBase64: currentImage || undefined };
-    setMessages(prev => [...prev, userMsg]);
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setInput('');
     setPendingImage(null);
     setIsLoading(true);
@@ -211,95 +354,34 @@ const Chat = () => {
       content: currentImage ? `[Image attached] ${userMsg.content}` : userMsg.content,
     });
 
-    let assistantContent = '';
-    const upsertAssistant = (chunk: string) => {
-      assistantContent += chunk;
-      latestAssistantRef.current = assistantContent;
-      setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant') {
-          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
-        }
-        return [...prev, { role: 'assistant', content: assistantContent }];
-      });
-    };
-
     try {
-      const resp = await fetch(CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
-          messages: buildApiMessages([...messages, userMsg]),
-          userId: user.id,
-          voiceMode: true,
-          bluetoothState: getBluetoothState(),
-        }),
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${resp.status}`);
-      }
-
-      if (!resp.body) throw new Error('No stream body');
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let idx: number;
-        while ((idx = buffer.indexOf('\n')) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
-          const json = line.slice(6).trim();
-          if (json === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) upsertAssistant(content);
-          } catch {
-            buffer = line + '\n' + buffer;
-            break;
-          }
-        }
-      }
-
+      const assistantContent = await runAgent(buildApiMessages(nextMessages), voiceMode);
       if (assistantContent) {
-        // Execute any Bluetooth commands
         await executeBluetoothCommands(assistantContent);
         const cleanContent = stripBtCommands(assistantContent);
+        latestAssistantRef.current = cleanContent;
+        setMessages(prev => [...prev, { role: 'assistant', content: cleanContent }]);
         await supabase.from('chat_messages').insert({
           conversation_id: conversationId,
           user_id: user.id,
           role: 'assistant',
           content: cleanContent,
         });
-        // Update displayed message with clean content
-        setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'assistant' ? { ...m, content: cleanContent } : m));
-        if (!isMuted) {
-          voiceConv.speak(cleanContent);
-        }
+        if (!isMuted) voiceConv.speak(cleanContent);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: 'CLRK Error',
-        description: err.message || 'Failed to get response',
+        description: getErrorMessage(err, 'Failed to get response'),
         variant: 'destructive',
       });
     }
 
     setIsLoading(false);
+  };
+
+  const sendMessageFromVoice = async (text: string) => {
+    await sendUserMessage(text, true);
   };
 
   useEffect(() => {
@@ -342,111 +424,8 @@ const Chat = () => {
 
   const sendMessage = async () => {
     if ((!input.trim() && !pendingImage) || isLoading || !user || !conversationId) return;
-
-    const currentImage = pendingImage;
-    const content = input.trim() || (currentImage ? 'What do you see in this image? Analyze it and help me.' : '');
-    const userMsg: Message = { role: 'user', content, imageBase64: currentImage || undefined };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setPendingImage(null);
-    setIsLoading(true);
-
-    // Save user message
-    await supabase.from('chat_messages').insert({
-      conversation_id: conversationId,
-      user_id: user.id,
-      role: 'user',
-      content: currentImage ? `[Image attached] ${content}` : content,
-    });
-
-    let assistantContent = '';
-
-    const upsertAssistant = (chunk: string) => {
-      assistantContent += chunk;
-      setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant') {
-          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
-        }
-        return [...prev, { role: 'assistant', content: assistantContent }];
-      });
-    };
-
-    try {
-      const resp = await fetch(CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
-          messages: buildApiMessages([...messages, userMsg]),
-          userId: user.id,
-          voiceMode: voiceConv.isVoiceMode,
-          bluetoothState: getBluetoothState(),
-        }),
-      });
-
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${resp.status}`);
-      }
-
-      if (!resp.body) throw new Error('No stream body');
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let idx: number;
-        while ((idx = buffer.indexOf('\n')) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
-          const json = line.slice(6).trim();
-          if (json === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) upsertAssistant(content);
-          } catch {
-            buffer = line + '\n' + buffer;
-            break;
-          }
-        }
-      }
-
-      // Save assistant message
-      if (assistantContent) {
-        await executeBluetoothCommands(assistantContent);
-        const cleanContent = stripBtCommands(assistantContent);
-        await supabase.from('chat_messages').insert({
-          conversation_id: conversationId,
-          user_id: user.id,
-          role: 'assistant',
-          content: cleanContent,
-        });
-        setMessages(prev => prev.map((m, i) => i === prev.length - 1 && m.role === 'assistant' ? { ...m, content: cleanContent } : m));
-        if (!isMuted) {
-          voiceConv.speak(cleanContent);
-        }
-      }
-    } catch (err: any) {
-      toast({
-        title: 'CLRK Error',
-        description: err.message || 'Failed to get response',
-        variant: 'destructive',
-      });
-    }
-
-    setIsLoading(false);
+    const content = input.trim() || (pendingImage ? 'What do you see in this image? Analyze it and help me.' : '');
+    await sendUserMessage(content, voiceConv.isVoiceMode);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
