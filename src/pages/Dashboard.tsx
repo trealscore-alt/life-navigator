@@ -184,7 +184,7 @@ const Dashboard = () => {
                 <Zap className="w-4 h-4" /> CLRK Activity Feed
               </h3>
               <span className="text-[9px] font-mono text-green-400 flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE DB
               </span>
             </div>
             <ClrkActivityFeed goalCount={goals.length} domainCount={domains.length} />

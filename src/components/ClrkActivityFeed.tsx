@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Shield, TrendingUp, AlertTriangle, Zap, Eye,
-  DollarSign, Activity, Radio, Clock, CheckCircle2, ArrowRight,
+  Activity, Radio, Clock, CheckCircle2, ArrowRight, Loader2,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ClrkAction {
   id: string;
@@ -15,7 +17,74 @@ interface ClrkAction {
   status: 'running' | 'completed' | 'pending';
 }
 
-const ICONS: Record<string, any> = {
+type RuntimeError = { message?: string };
+
+interface RuntimeQuery<T> extends PromiseLike<{ data: T[] | null; error: RuntimeError | null }> {
+  eq(column: string, value: unknown): RuntimeQuery<T>;
+  order(column: string, options: { ascending: boolean }): RuntimeQuery<T>;
+  limit(count: number): RuntimeQuery<T>;
+}
+
+interface RuntimeDb {
+  from<T>(table: string): {
+    select(columns: string): RuntimeQuery<T>;
+  };
+}
+
+type TaskRow = {
+  id: string;
+  title: string;
+  status: string;
+  domain: string | null;
+  updated_at: string;
+  created_at: string;
+};
+
+type SubagentRow = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  domain: string | null;
+  last_deployed_at: string | null;
+  created_at: string;
+};
+
+type SubagentRunRow = {
+  id: string;
+  objective: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type HistoryEventRow = {
+  id: string;
+  source: string;
+  kind: string;
+  title: string | null;
+  content: string;
+  occurred_at: string;
+};
+
+type DeviceReadingRow = {
+  id: string;
+  device_name: string | null;
+  data_type: string;
+  value: number;
+  unit: string;
+  processed: boolean | null;
+  created_at: string;
+};
+
+type BriefingRow = {
+  id: string;
+  briefing_date: string;
+  content: string;
+  created_at: string;
+};
+
+const ICONS: Record<string, typeof Eye> = {
   scan: Eye, alert: AlertTriangle, action: Zap,
   insight: Brain, defense: Shield, optimization: TrendingUp,
 };
@@ -29,54 +98,161 @@ const STATUS_COLORS: Record<string, string> = {
   running: 'bg-primary animate-pulse', completed: 'bg-green-400', pending: 'bg-yellow-400',
 };
 
-// Simulated proactive CLRK activity — in production these come from real subsystems
-const PROACTIVE_ACTIONS: Omit<ClrkAction, 'id' | 'timestamp'>[] = [
-  { type: 'scan', title: 'Environment scan complete', detail: 'No threats detected. All connected systems nominal.', domain: 'lifestyle', status: 'completed' },
-  { type: 'optimization', title: 'Spending pattern detected', detail: 'Recurring charge of $14.99/mo identified — unused subscription. Recommend cancellation → $180/yr saved.', domain: 'finance', status: 'completed' },
-  { type: 'insight', title: 'Goal acceleration opportunity', detail: 'Your learning velocity increased 23% this week. At this rate, certification achievable 2 weeks early.', domain: 'learning', status: 'completed' },
-  { type: 'defense', title: 'Agent firewall active', detail: '0 unauthorized agent requests in last 24h. Trust perimeter secure.', status: 'completed' },
-  { type: 'action', title: 'Daily routine optimized', detail: 'Morning block restructured: deep work 6-9am, meetings 10-12. Saves 47min context-switching.', domain: 'work', status: 'completed' },
-  { type: 'alert', title: 'Health trend flagged', detail: 'Sleep consistency dropped 15% over 5 days. Correlates with late screen time. Recommend 10pm digital cutoff.', domain: 'health', status: 'pending' },
-  { type: 'scan', title: 'Market watch triggered', detail: 'S&P 500 down 2.1%. Your portfolio hedge is active. No action required — holding per Buffett protocol.', domain: 'finance', status: 'completed' },
-  { type: 'optimization', title: 'Relationship maintenance', detail: 'Haven\'t contacted 3 key network connections in 30+ days. Draft messages prepared for your review.', domain: 'relationships', status: 'pending' },
-  { type: 'action', title: 'Auto-saved $42.00', detail: 'Detected price drop on watched item. Purchased at optimal price per your pre-authorized rules.', domain: 'finance', status: 'completed' },
-  { type: 'insight', title: 'Cognitive Council analysis', detail: 'Applied Musk first-principles to your Q2 goal set. 2 goals can be collapsed into 1 higher-leverage objective.', domain: 'ambition', status: 'completed' },
-];
+const toFeedStatus = (status: string): ClrkAction['status'] => {
+  if (['completed', 'failed', 'cancelled', 'archived'].includes(status)) return 'completed';
+  if (['awaiting_user', 'blocked', 'pending', 'queued', 'ready', 'draft'].includes(status)) return 'pending';
+  return 'running';
+};
+
+const truncate = (text: string, length = 130) =>
+  text.length > length ? `${text.slice(0, length - 1).trim()}...` : text;
 
 export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { goalCount?: number; domainCount?: number }) {
+  const { user } = useAuth();
   const [actions, setActions] = useState<ClrkAction[]>([]);
-  const [feedIndex, setFeedIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Simulate CLRK's proactive activity feed — stagger entries like a real system
   useEffect(() => {
-    const initial = PROACTIVE_ACTIONS.slice(0, 3).map((a, i) => ({
-      ...a,
-      id: crypto.randomUUID(),
-      timestamp: new Date(Date.now() - (3 - i) * 60000 * (5 + Math.random() * 10)),
-    }));
-    setActions(initial);
-    setFeedIndex(3);
-  }, []);
+    if (!user) return;
 
-  // Drip-feed new actions every 12 seconds
-  useEffect(() => {
-    if (feedIndex >= PROACTIVE_ACTIONS.length) return;
-    const timer = setInterval(() => {
-      setFeedIndex(prev => {
-        if (prev >= PROACTIVE_ACTIONS.length) return prev;
-        const next = PROACTIVE_ACTIONS[prev];
-        setActions(a => [
-          { ...next, id: crypto.randomUUID(), timestamp: new Date() },
-          ...a,
-        ].slice(0, 12));
-        return prev + 1;
-      });
-    }, 12000);
-    return () => clearInterval(timer);
-  }, [feedIndex]);
+    const runtimeDb = supabase as unknown as RuntimeDb;
+    let cancelled = false;
+
+    const loadFeed = async () => {
+      setLoading(true);
+      setError(null);
+
+      const [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes] = await Promise.all([
+        runtimeDb.from<TaskRow>('clrk_tasks')
+          .select('id, title, status, domain, updated_at, created_at')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(8),
+        runtimeDb.from<SubagentRow>('clrk_subagents')
+          .select('id, name, role, status, domain, last_deployed_at, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(8),
+        runtimeDb.from<SubagentRunRow>('clrk_subagent_runs')
+          .select('id, objective, status, created_at, completed_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(8),
+        runtimeDb.from<HistoryEventRow>('clrk_history_events')
+          .select('id, source, kind, title, content, occurred_at')
+          .eq('user_id', user.id)
+          .order('occurred_at', { ascending: false })
+          .limit(8),
+        supabase.from('device_data_logs')
+          .select('id, device_name, data_type, value, unit, processed, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(8),
+        supabase.from('daily_briefings')
+          .select('id, briefing_date, content, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(3),
+      ]);
+
+      if (cancelled) return;
+
+      const firstError = [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes]
+        .find((res) => res.error)?.error?.message;
+      if (firstError) {
+        setError(firstError);
+        setActions([]);
+        setLoading(false);
+        return;
+      }
+
+      const liveActions: ClrkAction[] = [
+        ...(taskRes.data || []).map((task) => ({
+          id: `task-${task.id}`,
+          type: 'action' as const,
+          title: `Task ${task.status.replace(/_/g, ' ')}`,
+          detail: task.title,
+          timestamp: new Date(task.updated_at || task.created_at),
+          domain: task.domain || undefined,
+          status: toFeedStatus(task.status),
+        })),
+        ...(subagentRes.data || []).map((agent) => ({
+          id: `subagent-${agent.id}`,
+          type: 'defense' as const,
+          title: `${agent.name} ${agent.status}`,
+          detail: `${agent.role}: ${agent.status === 'deployed' ? 'actively assigned' : 'available for assignment'}`,
+          timestamp: new Date(agent.last_deployed_at || agent.created_at),
+          domain: agent.domain || undefined,
+          status: toFeedStatus(agent.status),
+        })),
+        ...(runRes.data || []).map((run) => ({
+          id: `run-${run.id}`,
+          type: 'scan' as const,
+          title: `Subagent run ${run.status.replace(/_/g, ' ')}`,
+          detail: truncate(run.objective),
+          timestamp: new Date(run.completed_at || run.created_at),
+          status: toFeedStatus(run.status),
+        })),
+        ...(historyRes.data || []).map((event) => ({
+          id: `history-${event.id}`,
+          type: event.source === 'device' ? 'scan' as const : 'insight' as const,
+          title: event.title || `${event.source} ${event.kind}`,
+          detail: truncate(event.content),
+          timestamp: new Date(event.occurred_at),
+          domain: event.source,
+          status: 'completed' as const,
+        })),
+        ...(deviceRes.data || []).map((reading: DeviceReadingRow) => ({
+          id: `device-${reading.id}`,
+          type: 'scan' as const,
+          title: `${reading.device_name || 'Device'} reading`,
+          detail: `${reading.data_type}: ${reading.value} ${reading.unit}${reading.processed ? ' processed by CLRK' : ' awaiting analysis'}`,
+          timestamp: new Date(reading.created_at),
+          domain: 'devices',
+          status: reading.processed ? 'completed' as const : 'pending' as const,
+        })),
+        ...(briefingRes.data || []).map((briefing: BriefingRow) => ({
+          id: `briefing-${briefing.id}`,
+          type: 'insight' as const,
+          title: `Daily briefing ${briefing.briefing_date}`,
+          detail: truncate(briefing.content),
+          timestamp: new Date(briefing.created_at),
+          domain: 'briefing',
+          status: 'completed' as const,
+        })),
+      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 14);
+
+      setActions(liveActions);
+      setLoading(false);
+    };
+
+    loadFeed();
+    const timer = window.setInterval(loadFeed, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user]);
 
   return (
     <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin">
+      {loading && (
+        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-secondary/20 p-3 text-[10px] font-mono text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          Reading live CLRK runtime events...
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[10px] text-destructive">
+          Activity feed could not load live data: {error}
+        </div>
+      )}
+      {!loading && !error && actions.length === 0 && (
+        <div className="rounded-lg border border-border/40 bg-secondary/20 p-4 text-[10px] text-muted-foreground">
+          No live runtime events yet. CLRK is tracking {goalCount} active goal{goalCount === 1 ? '' : 's'} across {domainCount} domain{domainCount === 1 ? '' : 's'}. Create tasks, subagents, device readings, or a briefing and they will appear here.
+        </div>
+      )}
       <AnimatePresence mode="popLayout">
         {actions.map((action) => {
           const Icon = ICONS[action.type] || Zap;
