@@ -106,7 +106,14 @@ serve(async (req) => {
     // If the client posted tool results from the last turn, the last assistant
     // message already contains the tool_use blocks. Append a user message that
     // returns the tool_result blocks (Anthropic protocol).
-    const messages: ChatMessage[] = [...incomingMessages];
+    // Trim history to last 8 messages to stay under Anthropic input-token rate limits.
+    // The first message must not start with a tool_result, so drop leading orphans.
+    const trimmed = incomingMessages.slice(-8);
+    while (trimmed.length > 0 && Array.isArray(trimmed[0].content) &&
+           (trimmed[0].content as ContentBlock[]).some((c) => c.type === "tool_result")) {
+      trimmed.shift();
+    }
+    const messages: ChatMessage[] = trimmed;
     if (clientToolResults && clientToolResults.length > 0) {
       messages.push({
         role: "user",
