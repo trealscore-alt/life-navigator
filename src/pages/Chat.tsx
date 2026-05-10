@@ -76,6 +76,22 @@ const Chat = () => {
   const latestAssistantRef = useRef<string>('');
   const ttsUnlockedRef = useRef(false);
 
+  const getVoiceStatusLabel = () => {
+    if (voiceConv.isSpeaking) return 'Speaking...';
+    if (isLoading || voiceConv.sessionState === 'thinking') return 'Thinking...';
+    if (voiceConv.isListening) return 'Listening...';
+    if (voiceConv.isVoiceMode) return 'Voice session active';
+    return 'Ready';
+  };
+
+  const getVoiceIndicatorLabel = () => {
+    if (voiceConv.isSpeaking) return 'SPEAKING';
+    if (isLoading || voiceConv.sessionState === 'thinking') return 'THINKING';
+    if (voiceConv.isListening) return 'LISTENING';
+    if (voiceConv.isVoiceMode) return 'ACTIVE';
+    return 'ONLINE';
+  };
+
   // Bluetooth integration — auto-initialize on native
   const bluetooth = useBluetooth();
   const { isNative, initialized, initialize } = bluetooth;
@@ -394,6 +410,7 @@ const Chat = () => {
           content: cleanContent,
         });
         if (!isMuted) voiceConv.speak(cleanContent);
+        else voiceConv.resumeVoiceSession();
       }
     } catch (err: unknown) {
       toast({
@@ -401,6 +418,7 @@ const Chat = () => {
         description: getErrorMessage(err, 'Failed to get response'),
         variant: 'destructive',
       });
+      voiceConv.resumeVoiceSession();
     }
 
     setIsLoading(false);
@@ -487,7 +505,7 @@ const Chat = () => {
           <div>
             <h1 className="font-mono text-sm neon-text font-bold">CLRK</h1>
             <p className="text-[10px] font-mono text-muted-foreground flex items-center gap-2">
-              {voiceConv.isSpeaking ? 'Speaking...' : voiceConv.isListening ? 'Listening...' : isLoading ? 'Processing...' : 'Ready'}
+              {getVoiceStatusLabel()}
               {bluetooth.devices.some(d => d.connected) && (
                 <span className="flex items-center gap-1 text-primary">
                   <Bluetooth className="w-3 h-3" />
@@ -512,7 +530,7 @@ const Chat = () => {
           <Button
             variant={voiceConv.isVoiceMode ? 'default' : 'ghost'}
             size="icon"
-            onClick={voiceConv.toggleVoiceMode}
+            onClick={voiceConv.isVoiceMode ? () => voiceConv.endVoiceSession('Voice session deactivated') : voiceConv.startVoiceSession}
             className={voiceConv.isVoiceMode 
               ? 'bg-primary text-primary-foreground shadow-[0_0_15px_-3px_hsl(var(--neon-glow)/0.5)] animate-pulse' 
               : 'text-muted-foreground hover:text-primary'}
@@ -521,7 +539,7 @@ const Chat = () => {
           </Button>
           <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
             <div className={`w-2 h-2 rounded-full ${voiceConv.isListening ? 'bg-primary animate-pulse-glow' : isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-primary animate-pulse-glow'}`} />
-            {voiceConv.isListening ? 'LISTENING' : isLoading ? 'THINKING' : 'ONLINE'}
+            {getVoiceIndicatorLabel()}
           </div>
         </div>
       </header>
@@ -638,7 +656,7 @@ const Chat = () => {
         )}
         <div className="max-w-4xl mx-auto command-surface rounded-lg p-2 flex gap-2 sm:gap-3">
           <Button
-            onClick={voiceConv.isListening ? voiceConv.stopListening : voiceConv.startListening}
+            onClick={voiceConv.isVoiceMode ? () => voiceConv.endVoiceSession('Voice session deactivated') : voiceConv.startVoiceSession}
             disabled={isLoading || voiceConv.isSpeaking}
             size="icon"
             variant="ghost"
@@ -671,7 +689,7 @@ const Chat = () => {
         </div>
         {voiceConv.isVoiceMode && (
           <p className="text-center text-[10px] font-mono text-primary/60 mt-2">
-            VOICE MODE ACTIVE - Speak naturally, CLRK will respond aloud
+            CONTINUOUS VOICE ACTIVE - Speak naturally. Say "CLRK sleep" or "stop listening" to end.
           </p>
         )}
         {voiceConv.voiceError && (

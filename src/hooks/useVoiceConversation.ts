@@ -11,6 +11,8 @@ interface UseVoiceConversationOptions {
   onStop?: () => void;
 }
 
+export type VoiceSessionState = 'sleeping' | 'active' | 'thinking' | 'speaking' | 'paused';
+
 interface SpeechRecognitionAlternativeLike {
   transcript: string;
 }
@@ -49,14 +51,23 @@ interface SpeechRecognitionWindow extends Window {
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
 }
 
+const ACTIVE_SESSION_TIMEOUT_MS = 120000;
+const WAKE_PHRASE_RE = /\b(?:hey|listen|wake up)\s*(clrk|clark|clerk)\b/;
+const SLEEP_PHRASE_RE = /\b(?:clrk\s*)?(sleep|go to sleep|stop listening|end voice|end conversation|goodbye|pause listening)\b/;
+const STOP_SPEAKING_RE = /\b(stop|shut up|be quiet|silence|enough)\b/;
+
 export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, onWake, onStop }: UseVoiceConversationOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [sessionState, setSessionState] = useState<VoiceSessionState>('sleeping');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const shouldRestartRef = useRef(false);
+  const processingHoldRef = useRef(false);
+  const sessionTimeoutRef = useRef<number | null>(null);
+  const endVoiceSessionRef = useRef<(message?: string) => void>(() => {});
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const browserSupportsVoice =
     typeof window !== 'undefined' &&
@@ -77,8 +88,23 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     };
   }, []);
 
+  const clearSessionTimeout = useCallback(() => {
+    if (sessionTimeoutRef.current) {
+      window.clearTimeout(sessionTimeoutRef.current);
+      sessionTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetSessionTimeout = useCallback(() => {
+    clearSessionTimeout();
+    if (!shouldRestartRef.current) return;
+
+    sessionTimeoutRef.current = window.setTimeout(() => {
+      endVoiceSessionRef.current('Voice session ended after quiet time.');
+    }, ACTIVE_SESSION_TIMEOUT_MS);
+  }, [clearSessionTimeout]);
+
   const stopListening = useCallback(() => {
-    shouldRestartRef.current = false;
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch { /* ignore */ }
       recognitionRef.current = null;
@@ -91,7 +117,22 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     setIsSpeaking(false);
   }, []);
 
-  const startListening = useCallback(() => {
+  const endVoiceSession = useCallback((message = 'Voice session ended') => {
+    shouldRestartRef.current = false;
+    processingHoldRef.current = false;
+    clearSessionTimeout();
+    stopListening();
+    stopSpeaking();
+    setIsVoiceMode(false);
+    setSessionState('sleeping');
+    toast.info(message);
+  }, [clearSessionTimeout, stopListening, stopSpeaking]);
+
+  useEffect(() => {
+    endVoiceSessionRef.current = endVoiceSession;
+  }, [endVoiceSession]);
+
+  const startListening = useCallback((keepSessionActive = true) => {
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -116,6 +157,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     recognition.onstart = () => {
       setVoiceError(null);
       setIsListening(true);
+      if (shouldRestartRef.current) {
+        setSessionState('active');
+        resetSessionTimeout();
+      }
     };
     
     recognition.onresult = (event: SpeechRecognitionEventLike) => {
@@ -123,21 +168,38 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       if (!text) return;
 
       const lower = text.toLowerCase().replace(/[^a-z\s]/g, '');
+      resetSessionTimeout();
+
+      if (SLEEP_PHRASE_RE.test(lower)) {
+        endVoiceSession('CLRK is sleeping. Say Hey CLRK or tap the mic to reopen the session.');
+        return;
+      }
 
       // "stop" command — silence CLRK
-      if (/\b(stop|shut up|be quiet|silence|enough)\b/.test(lower)) {
+      if (STOP_SPEAKING_RE.test(lower)) {
         stopSpeaking();
         onStop?.();
-        // Keep listening for next command in voice mode
+        if (shouldRestartRef.current) setSessionState('active');
         return;
       }
 
       // "listen CLRK" wake command — activate voice mode if not already
-      if (/\blisten\s*(clrk|clark|clerk)\b/.test(lower) || /\bhey\s*(clrk|clark|clerk)\b/.test(lower)) {
+      if (WAKE_PHRASE_RE.test(lower)) {
         onWake?.();
+        if (!shouldRestartRef.current) {
+          shouldRestartRef.current = true;
+          setIsVoiceMode(true);
+          setSessionState('active');
+        }
+        resetSessionTimeout();
         return;
       }
 
+      if (shouldRestartRef.current) {
+        processingHoldRef.current = true;
+        setSessionState('thinking');
+        try { recognition.stop(); } catch { /* ignore */ }
+      }
       onTranscript(text);
     };
 
@@ -145,8 +207,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       setIsListening(false);
       recognitionRef.current = null;
       // Auto-restart if we're in voice mode and not currently speaking
-      if (shouldRestartRef.current && !window.speechSynthesis?.speaking) {
+      if (shouldRestartRef.current && !processingHoldRef.current && !window.speechSynthesis?.speaking) {
         setTimeout(() => startListening(), 300);
+      } else if (!shouldRestartRef.current) {
+        setSessionState('sleeping');
       }
     };
 
@@ -165,6 +229,11 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
 
     recognitionRef.current = recognition;
     try {
+      if (keepSessionActive) {
+        shouldRestartRef.current = true;
+        setIsVoiceMode(true);
+        resetSessionTimeout();
+      }
       recognition.start();
       return true;
     } catch (err) {
@@ -173,7 +242,7 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       toast.error(message);
       return false;
     }
-  }, [onStop, onTranscript, onWake, stopSpeaking]);
+  }, [endVoiceSession, onStop, onTranscript, onWake, resetSessionTimeout, stopSpeaking]);
 
   const speak = useCallback((text: string) => {
     if (!window.speechSynthesis) {
@@ -229,6 +298,10 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
 
     utterance.onstart = () => {
       setIsSpeaking(true);
+      if (shouldRestartRef.current) {
+        setSessionState('speaking');
+        resetSessionTimeout();
+      }
       onSpeakStart?.();
     };
 
@@ -237,6 +310,7 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       onSpeakEnd?.();
       // Auto-listen again in voice mode
       if (shouldRestartRef.current) {
+        setSessionState('active');
         setTimeout(() => startListening(), 500);
       }
     };
@@ -245,6 +319,7 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
       console.error('TTS error:', e);
       setIsSpeaking(false);
       onSpeakEnd?.();
+      if (shouldRestartRef.current) setSessionState('active');
     };
 
     utteranceRef.current = utterance;
@@ -253,37 +328,61 @@ export function useVoiceConversation({ onTranscript, onSpeakStart, onSpeakEnd, o
     setTimeout(() => {
       window.speechSynthesis.speak(utterance);
     }, 100);
-  }, [stopListening, startListening, onSpeakStart, onSpeakEnd]);
+  }, [stopListening, startListening, onSpeakStart, onSpeakEnd, resetSessionTimeout]);
+
+  const startVoiceSession = useCallback(() => {
+    processingHoldRef.current = false;
+    shouldRestartRef.current = true;
+    setIsVoiceMode(true);
+    setSessionState('active');
+    resetSessionTimeout();
+
+    const started = startListening();
+    if (!started) {
+      shouldRestartRef.current = false;
+      clearSessionTimeout();
+      setIsVoiceMode(false);
+      setSessionState('sleeping');
+      return false;
+    }
+    toast.success('Continuous voice session active. Say "CLRK sleep" to end it.');
+    return true;
+  }, [clearSessionTimeout, resetSessionTimeout, startListening]);
+
+  const resumeVoiceSession = useCallback(() => {
+    if (!shouldRestartRef.current) return;
+    processingHoldRef.current = false;
+    setSessionState('active');
+    resetSessionTimeout();
+    if (!recognitionRef.current && !window.speechSynthesis?.speaking) {
+      setTimeout(() => startListening(), 250);
+    }
+  }, [resetSessionTimeout, startListening]);
 
   const toggleVoiceMode = useCallback(() => {
-    setIsVoiceMode(prev => {
-      const next = !prev;
-      if (next) {
-        shouldRestartRef.current = true;
-        const started = startListening();
-        if (!started) {
-          shouldRestartRef.current = false;
-          return false;
-        }
-        toast.success('Voice mode activated. Speak to CLRK.');
-      } else {
-        shouldRestartRef.current = false;
-        stopListening();
-        stopSpeaking();
-        toast.info('Voice mode deactivated');
-      }
-      return next;
-    });
-  }, [startListening, stopListening, stopSpeaking]);
+    if (shouldRestartRef.current || isVoiceMode) {
+      endVoiceSession('Voice session deactivated');
+      return;
+    }
+    startVoiceSession();
+  }, [endVoiceSession, isVoiceMode, startVoiceSession]);
+
+  useEffect(() => {
+    return () => clearSessionTimeout();
+  }, [clearSessionTimeout]);
 
   return {
     isListening,
     isSpeaking,
     isVoiceMode,
+    sessionState,
     browserSupportsVoice,
     voiceError,
     startListening,
     stopListening,
+    startVoiceSession,
+    endVoiceSession,
+    resumeVoiceSession,
     speak,
     stopSpeaking,
     toggleVoiceMode,
