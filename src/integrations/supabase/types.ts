@@ -168,6 +168,453 @@ export type Database = {
           },
         ]
       }
+      chat_summaries: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          id: string
+          last_message_id: string | null
+          message_count: number
+          summary: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          id?: string
+          last_message_id?: string | null
+          message_count: number
+          summary: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          last_message_id?: string | null
+          message_count?: number
+          summary?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_summaries_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_summaries_last_message_id_fkey"
+            columns: ["last_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clrk_history_events: {
+        Row: {
+          content: string
+          conversation_id: string | null
+          created_at: string
+          embedding: string | null
+          id: string
+          kind: string
+          metadata: Json
+          occurred_at: string
+          source: string
+          source_id: string | null
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id?: string | null
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          kind: string
+          metadata?: Json
+          occurred_at?: string
+          source: string
+          source_id?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string | null
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          kind?: string
+          metadata?: Json
+          occurred_at?: string
+          source?: string
+          source_id?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clrk_history_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clrk_memory: {
+        Row: {
+          access_count: number
+          confidence: number | null
+          content: string
+          created_at: string
+          embedding: string | null
+          expires_at: string | null
+          id: string
+          importance: number | null
+          kind: string
+          last_accessed_at: string | null
+          metadata: Json | null
+          source: string | null
+          source_id: string | null
+          superseded_by: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_count?: number
+          confidence?: number | null
+          content: string
+          created_at?: string
+          embedding?: string | null
+          expires_at?: string | null
+          id?: string
+          importance?: number | null
+          kind: string
+          last_accessed_at?: string | null
+          metadata?: Json | null
+          source?: string | null
+          source_id?: string | null
+          superseded_by?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_count?: number
+          confidence?: number | null
+          content?: string
+          created_at?: string
+          embedding?: string | null
+          expires_at?: string | null
+          id?: string
+          importance?: number | null
+          kind?: string
+          last_accessed_at?: string | null
+          metadata?: Json | null
+          source?: string | null
+          source_id?: string | null
+          superseded_by?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clrk_memory_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "clrk_memory"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clrk_subagent_runs: {
+        Row: {
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          input: Json
+          objective: string
+          output: Json | null
+          plan: Json
+          started_at: string | null
+          status: Database["public"]["Enums"]["clrk_subagent_run_status"]
+          subagent_id: string
+          task_id: string | null
+          trace: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input?: Json
+          objective: string
+          output?: Json | null
+          plan?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["clrk_subagent_run_status"]
+          subagent_id: string
+          task_id?: string | null
+          trace?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input?: Json
+          objective?: string
+          output?: Json | null
+          plan?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["clrk_subagent_run_status"]
+          subagent_id?: string
+          task_id?: string | null
+          trace?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clrk_subagent_runs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clrk_subagent_runs_subagent_id_fkey"
+            columns: ["subagent_id"]
+            isOneToOne: false
+            referencedRelation: "clrk_subagents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clrk_subagent_runs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "clrk_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clrk_subagents: {
+        Row: {
+          autonomy_level: Database["public"]["Enums"]["clrk_autonomy_level"]
+          capabilities: string[]
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          domain: Database["public"]["Enums"]["life_domain"] | null
+          error_message: string | null
+          guardrails: Json
+          handoff_contract: Json
+          id: string
+          last_deployed_at: string | null
+          memory: Json
+          metadata: Json | null
+          mission: string
+          name: string
+          parent_task_id: string | null
+          result: Json | null
+          role: string
+          status: Database["public"]["Enums"]["clrk_subagent_status"]
+          tool_scope: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          autonomy_level?: Database["public"]["Enums"]["clrk_autonomy_level"]
+          capabilities?: string[]
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          domain?: Database["public"]["Enums"]["life_domain"] | null
+          error_message?: string | null
+          guardrails?: Json
+          handoff_contract?: Json
+          id?: string
+          last_deployed_at?: string | null
+          memory?: Json
+          metadata?: Json | null
+          mission: string
+          name: string
+          parent_task_id?: string | null
+          result?: Json | null
+          role: string
+          status?: Database["public"]["Enums"]["clrk_subagent_status"]
+          tool_scope?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          autonomy_level?: Database["public"]["Enums"]["clrk_autonomy_level"]
+          capabilities?: string[]
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          domain?: Database["public"]["Enums"]["life_domain"] | null
+          error_message?: string | null
+          guardrails?: Json
+          handoff_contract?: Json
+          id?: string
+          last_deployed_at?: string | null
+          memory?: Json
+          metadata?: Json | null
+          mission?: string
+          name?: string
+          parent_task_id?: string | null
+          result?: Json | null
+          role?: string
+          status?: Database["public"]["Enums"]["clrk_subagent_status"]
+          tool_scope?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clrk_subagents_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clrk_subagents_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "clrk_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clrk_tasks: {
+        Row: {
+          autonomy_level: Database["public"]["Enums"]["clrk_autonomy_level"]
+          completed_at: string | null
+          conversation_id: string | null
+          cost_cents_actual: number | null
+          cost_cents_estimate: number | null
+          created_at: string
+          description: string | null
+          domain: Database["public"]["Enums"]["life_domain"] | null
+          error_message: string | null
+          goal_id: string | null
+          id: string
+          last_executor_run_at: string | null
+          max_steps: number
+          metadata: Json | null
+          next_check_at: string | null
+          parent_task_id: string | null
+          plan: Json | null
+          result: Json | null
+          scheduled_for: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["clrk_task_status"]
+          steps_used: number
+          title: string
+          trace: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          autonomy_level?: Database["public"]["Enums"]["clrk_autonomy_level"]
+          completed_at?: string | null
+          conversation_id?: string | null
+          cost_cents_actual?: number | null
+          cost_cents_estimate?: number | null
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["life_domain"] | null
+          error_message?: string | null
+          goal_id?: string | null
+          id?: string
+          last_executor_run_at?: string | null
+          max_steps?: number
+          metadata?: Json | null
+          next_check_at?: string | null
+          parent_task_id?: string | null
+          plan?: Json | null
+          result?: Json | null
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["clrk_task_status"]
+          steps_used?: number
+          title: string
+          trace?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          autonomy_level?: Database["public"]["Enums"]["clrk_autonomy_level"]
+          completed_at?: string | null
+          conversation_id?: string | null
+          cost_cents_actual?: number | null
+          cost_cents_estimate?: number | null
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["life_domain"] | null
+          error_message?: string | null
+          goal_id?: string | null
+          id?: string
+          last_executor_run_at?: string | null
+          max_steps?: number
+          metadata?: Json | null
+          next_check_at?: string | null
+          parent_task_id?: string | null
+          plan?: Json | null
+          result?: Json | null
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["clrk_task_status"]
+          steps_used?: number
+          title?: string
+          trace?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clrk_tasks_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clrk_tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "user_goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clrk_tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "clrk_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_briefings: {
         Row: {
           briefing_date: string
@@ -488,10 +935,76 @@ export type Database = {
         }
         Returns: boolean
       }
+      match_clrk_history: {
+        Args: {
+          p_match_count?: number
+          p_query_embedding: string
+          p_sources?: string[]
+          p_user_id: string
+        }
+        Returns: {
+          content: string
+          id: string
+          kind: string
+          occurred_at: string
+          similarity: number
+          source: string
+          title: string
+        }[]
+      }
+      match_clrk_memory: {
+        Args: {
+          p_kinds?: string[]
+          p_match_count?: number
+          p_query_embedding: string
+          p_user_id: string
+        }
+        Returns: {
+          content: string
+          id: string
+          importance: number
+          kind: string
+          similarity: number
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       agent_trust_level: "trusted" | "limited" | "untrusted"
       app_role: "admin" | "moderator" | "user"
+      clrk_autonomy_level:
+        | "L0_advisory"
+        | "L1_drafting"
+        | "L2_assisted"
+        | "L3_rule_based"
+        | "L4_delegated"
+        | "L5_ambient"
+      clrk_subagent_run_status:
+        | "queued"
+        | "running"
+        | "awaiting_user"
+        | "blocked"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      clrk_subagent_status:
+        | "draft"
+        | "ready"
+        | "deployed"
+        | "paused"
+        | "completed"
+        | "failed"
+        | "archived"
+      clrk_task_status:
+        | "pending"
+        | "planning"
+        | "awaiting_user"
+        | "executing"
+        | "blocked"
+        | "completed"
+        | "failed"
+        | "cancelled"
       life_domain:
         | "work"
         | "finance"
@@ -629,6 +1142,42 @@ export const Constants = {
     Enums: {
       agent_trust_level: ["trusted", "limited", "untrusted"],
       app_role: ["admin", "moderator", "user"],
+      clrk_autonomy_level: [
+        "L0_advisory",
+        "L1_drafting",
+        "L2_assisted",
+        "L3_rule_based",
+        "L4_delegated",
+        "L5_ambient",
+      ],
+      clrk_subagent_run_status: [
+        "queued",
+        "running",
+        "awaiting_user",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+      clrk_subagent_status: [
+        "draft",
+        "ready",
+        "deployed",
+        "paused",
+        "completed",
+        "failed",
+        "archived",
+      ],
+      clrk_task_status: [
+        "pending",
+        "planning",
+        "awaiting_user",
+        "executing",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
       life_domain: [
         "work",
         "finance",
