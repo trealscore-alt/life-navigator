@@ -148,10 +148,12 @@ serve(async (req) => {
     const intelligenceContext = await loadUserIntelligenceContext(sb, userId);
     const intelligence = await getIntelligenceFeed(intelligenceContext, 10).catch(() => []);
 
+    const userName = (profile?.display_name as string) || "Agent";
     const prompt = [
-      `Generate Charles' Daily Intelligence Briefing for ${date.readable}.`,
+      `Generate ${userName}'s Daily Intelligence Briefing for ${date.readable}.`,
       "",
-      "This must be deeply personal and grounded only in the data below. Do not invent data. If something is missing, say what is missing and what CLRK needs connected.",
+      `ALWAYS open by addressing the user as "${userName}" by name. Do NOT use their role title (e.g. Creator, Founder) in place of their name.`,
+      "This must be deeply personal and grounded ONLY in the data below. Do not invent goals, debts, businesses, or facts. If something is missing, say what is missing and what CLRK needs connected.",
       "",
       "Profile:",
       `- Name: ${profile?.display_name || "User"}`,
