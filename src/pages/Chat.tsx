@@ -60,6 +60,12 @@ const parseDataUrl = (dataUrl: string) => {
 const getErrorMessage = (err: unknown, fallback: string) =>
   err instanceof Error ? err.message : fallback;
 
+const getTemporalContext = () => ({
+  clientTimestamp: new Date().toISOString(),
+  clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  clientLocale: navigator.language || 'en-US',
+});
+
 const Chat = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -333,6 +339,7 @@ const Chat = () => {
           messages: agentMessages,
           conversationId,
           voiceMode,
+          temporalContext: getTemporalContext(),
           bluetoothState: getBluetoothState(),
           ...(clientToolResults ? { clientToolResults } : {}),
         }),

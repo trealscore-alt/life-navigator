@@ -68,10 +68,18 @@ export interface BluetoothState {
   monitoring?: string[];
 }
 
+export interface TemporalContext {
+  clientTimestamp?: string;
+  clientTimezone?: string;
+  clientLocale?: string;
+  serverTimestamp?: string;
+}
+
 export interface PromptOptions {
   voiceMode?: boolean;
   hasImages?: boolean;
   bluetoothState?: BluetoothState | null;
+  temporalContext?: TemporalContext | null;
   /** When true, omit the freeform [BT:*] command spec — agent uses real tools instead. */
   toolMode?: boolean;
 }
@@ -163,9 +171,11 @@ export function formatUserContext(ctx: UserContext): string {
 
 export function buildClrkSystemPrompt(ctx: UserContext, opts: PromptOptions = {}): string {
   const userSection = formatUserContext(ctx);
+  const temporalSection = formatTemporalContext(opts.temporalContext);
 
   const sections: string[] = [
     CLRK_IDENTITY,
+    temporalSection,
     userSection,
     DATA_INTEGRITY_RULE,
     PRIMARY_OBJECTIVE,
@@ -222,8 +232,9 @@ export function buildClrkSystemPrompt(ctx: UserContext, opts: PromptOptions = {}
 // Live Mode prompt (smart-glasses / AR latency-sensitive path)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function buildClrkLivePrompt(ctx: UserContext): string {
+export function buildClrkLivePrompt(ctx: UserContext, opts: { temporalContext?: TemporalContext | null } = {}): string {
   const userSection = formatUserContext(ctx);
+  const temporalSection = formatTemporalContext(opts.temporalContext);
   return `You are CLRK (Cognitive Life Resource Kernel) operating in LIVE MODE through the user's smart glasses or camera device.
 
 You can SEE what the user sees through their camera feed. You can HEAR what they say through their microphone. You respond VERBALLY — your responses will be spoken aloud through text-to-speech.
@@ -246,6 +257,8 @@ You can SEE what the user sees through their camera feed. You can HEAR what they
 - Analyze people's body language in meetings (with consent awareness)
 - Read whiteboards, presentations, notes
 - Identify vehicles, real estate, assets
+
+${temporalSection}
 
 ${userSection}
 
@@ -289,6 +302,76 @@ function formatBluetoothState(state: BluetoothState): string {
 ${deviceList}
 - Live Readings:
 ${readingsList}`;
+}
+
+export function formatTemporalContext(ctx: TemporalContext | null = null): string {
+  const serverNow = new Date(ctx?.serverTimestamp || new Date().toISOString());
+  const clientNow = new Date(ctx?.clientTimestamp || serverNow.toISOString());
+  const effectiveNow = Number.isNaN(clientNow.getTime()) ? serverNow : clientNow;
+  const timezone = ctx?.clientTimezone || "UTC";
+  const locale = ctx?.clientLocale || "en-US";
+
+  let localNow = effectiveNow.toISOString();
+  let localDate = effectiveNow.toISOString().slice(0, 10);
+  let localTime = effectiveNow.toISOString().slice(11, 19) + " UTC";
+  let weekday = "Unknown";
+  let year = String(effectiveNow.getUTCFullYear());
+
+  try {
+    localNow = new Intl.DateTimeFormat(locale, {
+      timeZone: timezone,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "short",
+    }).format(effectiveNow);
+
+    localDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(effectiveNow);
+
+    localTime = new Intl.DateTimeFormat(locale, {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "short",
+    }).format(effectiveNow);
+
+    weekday = new Intl.DateTimeFormat(locale, {
+      timeZone: timezone,
+      weekday: "long",
+    }).format(effectiveNow);
+
+    year = new Intl.DateTimeFormat("en", {
+      timeZone: timezone,
+      year: "numeric",
+    }).format(effectiveNow);
+  } catch {
+    localNow = effectiveNow.toISOString();
+  }
+
+  return `## LIVE TEMPORAL AWARENESS (REAL CURRENT TIME)
+- Current local date/time for the user: ${localNow}
+- Current local date: ${localDate}
+- Current local time: ${localTime}
+- Current day of week: ${weekday}
+- Current year: ${year}
+- User timezone: ${timezone}
+- Server UTC timestamp: ${serverNow.toISOString()}
+
+Temporal rules:
+- Treat this block as the source of truth for today, tomorrow, yesterday, weekday, month, year, and current time.
+- If the user asks what time/day/year it is, answer directly from this block.
+- Resolve relative dates against the user's local timezone, not model training data.
+- Never say you do not know the current date or time when this block is present.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

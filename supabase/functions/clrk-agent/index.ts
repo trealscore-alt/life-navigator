@@ -18,7 +18,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildClrkSystemPrompt, type BluetoothState } from "../_shared/clrk-prompt.ts";
+import { buildClrkSystemPrompt, type BluetoothState, type TemporalContext } from "../_shared/clrk-prompt.ts";
 import { CORS_HEADERS, errorResponse, getServiceClient, jsonResponse, loadUserContext } from "../_shared/clrk-context.ts";
 import {
   CLIENT_TOOL_NAMES,
@@ -35,6 +35,7 @@ interface AgentRequest {
   conversationId?: string;
   voiceMode?: boolean;
   bluetoothState?: BluetoothState | null;
+  temporalContext?: TemporalContext | null;
   /** Results from a previous turn's client tool requests, keyed by tool_use_id. */
   clientToolResults?: Array<{ tool_use_id: string; content: string; is_error?: boolean }>;
 }
@@ -71,7 +72,7 @@ serve(async (req) => {
     const userId = user.id;
 
     const body = (await req.json()) as AgentRequest;
-    const { messages: incomingMessages, conversationId, voiceMode, bluetoothState, clientToolResults } = body;
+    const { messages: incomingMessages, conversationId, voiceMode, bluetoothState, temporalContext, clientToolResults } = body;
     if (!Array.isArray(incomingMessages)) return errorResponse("messages[] required", 400);
 
     const sb = getServiceClient();
@@ -88,6 +89,10 @@ serve(async (req) => {
       voiceMode,
       hasImages,
       bluetoothState,
+      temporalContext: {
+        ...(temporalContext || {}),
+        serverTimestamp: new Date().toISOString(),
+      },
       toolMode: true,
     });
 

@@ -11,6 +11,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   buildClrkSystemPrompt,
   type BluetoothState,
+  type TemporalContext,
 } from "../_shared/clrk-prompt.ts";
 import {
   CORS_HEADERS,
@@ -25,20 +26,27 @@ interface ChatBody {
   conversationId?: string;
   voiceMode?: boolean;
   bluetoothState?: BluetoothState | null;
+  temporalContext?: TemporalContext | null;
 }
+
+const isImageContentBlock = (value: unknown): value is { type: "image_url" } =>
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  (value as { type?: unknown }).type === "image_url";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
 
   try {
     const body = (await req.json()) as ChatBody;
-    const { messages, userId, conversationId, voiceMode, bluetoothState } = body;
+    const { messages, userId, conversationId, voiceMode, bluetoothState, temporalContext } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const hasImages = messages.some(
-      (m) => Array.isArray(m.content) && (m.content as any[]).some((c) => c.type === "image_url"),
+    const hasImages = messages.some((m) =>
+      Array.isArray(m.content) && m.content.some(isImageContentBlock)
     );
 
     let userContext = {};
@@ -54,6 +62,10 @@ serve(async (req) => {
       voiceMode,
       hasImages,
       bluetoothState,
+      temporalContext: {
+        ...(temporalContext || {}),
+        serverTimestamp: new Date().toISOString(),
+      },
       // Legacy text-token mode — keeps existing client BT regex working.
       toolMode: false,
     });

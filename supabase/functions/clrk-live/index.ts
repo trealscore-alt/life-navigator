@@ -2,7 +2,7 @@
 // Latency-sensitive, non-streaming JSON response, vision-capable model.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { buildClrkLivePrompt } from "../_shared/clrk-prompt.ts";
+import { buildClrkLivePrompt, type TemporalContext } from "../_shared/clrk-prompt.ts";
 import {
   CORS_HEADERS,
   errorResponse,
@@ -15,13 +15,16 @@ interface LiveBody {
   messages: Array<{ role: "user" | "assistant"; content: unknown }>;
   userId?: string;
   imageBase64?: string;
+  temporalContext?: TemporalContext | null;
 }
+
+type ApiMessage = { role: "system" | "user" | "assistant"; content: unknown };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
 
   try {
-    const { messages, userId, imageBase64 } = (await req.json()) as LiveBody;
+    const { messages, userId, imageBase64, temporalContext } = (await req.json()) as LiveBody;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
@@ -32,9 +35,14 @@ serve(async (req) => {
       userContext = await loadUserContext(sb, userId, { deviceLimit: 30 });
     }
 
-    const systemPrompt = buildClrkLivePrompt(userContext);
+    const systemPrompt = buildClrkLivePrompt(userContext, {
+      temporalContext: {
+        ...(temporalContext || {}),
+        serverTimestamp: new Date().toISOString(),
+      },
+    });
 
-    const apiMessages: any[] = [{ role: "system", content: systemPrompt }, ...messages];
+    const apiMessages: ApiMessage[] = [{ role: "system", content: systemPrompt }, ...messages];
 
     // Inline the image into the last user message if provided.
     if (imageBase64 && apiMessages.length > 1) {

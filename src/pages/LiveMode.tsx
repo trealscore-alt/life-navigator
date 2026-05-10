@@ -68,6 +68,12 @@ interface SpeechRecognitionWindow extends Window {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Failed to communicate with CLRK';
 
+const getTemporalContext = () => ({
+  clientTimestamp: new Date().toISOString(),
+  clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  clientLocale: navigator.language || 'en-US',
+});
+
 const LiveMode = () => {
   const { user } = useAuth();
   const { parseCommand } = useVoiceCommands();
@@ -248,6 +254,7 @@ const LiveMode = () => {
             messages: newMessages.slice(-10),
             userId: user.id,
             imageBase64,
+            temporalContext: getTemporalContext(),
           }),
         }
       );
