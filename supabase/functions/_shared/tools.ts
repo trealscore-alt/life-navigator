@@ -341,7 +341,7 @@ const TOOL_DEFS: ToolDescriptor[] = [
         },
         plan: { type: "array", items: { type: "object" }, description: "Parent task plan steps." },
       },
-      required: ["objective", "subagents"],
+      required: ["objective"],
     },
   },
   {
@@ -1184,8 +1184,31 @@ export const SERVER_HANDLERS: Record<string, ToolHandler> = {
   deploy_subagents: async (input, ctx) => {
     const objective = input.objective as string;
     const autonomyLevel = (input.autonomy_level as string) ?? "L1_drafting";
-    const rawSubagents = Array.isArray(input.subagents) ? input.subagents as Array<Record<string, unknown>> : [];
-    if (rawSubagents.length === 0) throw new Error("subagents[] required");
+    const rawSubagents = Array.isArray(input.subagents) && input.subagents.length > 0
+      ? input.subagents as Array<Record<string, unknown>>
+      : [
+          {
+            name: "Mission Scout",
+            role: "Research and context specialist",
+            mission: `Gather relevant context, constraints, options, and unknowns for: ${objective}`,
+            capabilities: ["research", "history_search", "context_mapping", "risk_identification"],
+            tool_scope: ["search_history", "recall", "web_search", "fetch_url"],
+          },
+          {
+            name: "Execution Planner",
+            role: "Planning and sequencing specialist",
+            mission: `Turn the objective into phases, milestones, dependencies, and next actions: ${objective}`,
+            capabilities: ["planning", "prioritization", "dependency_mapping", "timeline_design"],
+            tool_scope: ["create_task", "update_task", "list_goals", "search_history"],
+          },
+          {
+            name: "Ops Runner",
+            role: "Drafting and operations specialist",
+            mission: `Prepare drafts, checklists, messages, and operational assets needed to move this forward: ${objective}`,
+            capabilities: ["drafting", "checklists", "workflow_design", "status_reporting"],
+            tool_scope: ["create_task", "write_history_event", "remember"],
+          },
+        ];
 
     const parentPlan = Array.isArray(input.plan)
       ? input.plan

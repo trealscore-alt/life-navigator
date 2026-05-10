@@ -25,6 +25,18 @@ interface ClrkLiveResponse {
   error?: string;
 }
 
+type AgentMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+type AgentResponse = {
+  done: boolean;
+  messages: AgentMessage[];
+  finalText?: string;
+  pendingClientCalls?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+};
+
 interface SpeechRecognitionAlternativeLike {
   transcript: string;
 }
@@ -73,6 +85,11 @@ const getTemporalContext = () => ({
   clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   clientLocale: navigator.language || 'en-US',
 });
+
+const AGENT_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-agent`;
+const SUBAGENT_VOICE_RE = /\b(?:create|make|build|define|deploy|spin up|launch|assign)\b.{0,80}\b(?:subagent|subagents|agent|agents|specialist|specialists|squad|team)\b|\b(?:subagent|subagents|agent|agents|specialist|specialists|squad|team)\b.{0,80}\b(?:handle|research|plan|build|monitor|analyze|manage|work on)\b/i;
+
+const isSubagentVoiceCommand = (text: string) => SUBAGENT_VOICE_RE.test(text);
 
 const LiveMode = () => {
   const { user } = useAuth();
@@ -207,26 +224,43 @@ const LiveMode = () => {
     speak(response);
   }, [speak]);
 
-  const sendToClrk = useCallback(async (userText: string) => {
-    if (!user) return;
+  const getAuthToken = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const token = data.session?.access_token;
+    if (!token) throw new Error('Sign in again to reach CLRK.');
+    return token;
+  };
 
-    // Check for device commands first
-    const cmd = parseCommand(userText);
-    if (cmd) {
-      // Add user message to transcript
-      const userEntry: TranscriptEntry = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        text: userText,
-        timestamp: new Date(),
-      };
-      setTranscript(prev => [...prev, userEntry]);
-      setMessages(prev => [...prev, { role: 'user', content: userText }]);
-      handleDeviceCommand(cmd);
-      return;
+  const runSubagentVoiceCommand = useCallback(async (newMessages: AgentMessage[]) => {
+    const token = await getAuthToken();
+    const response = await fetch(AGENT_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        messages: newMessages.slice(-10),
+        voiceMode: true,
+        temporalContext: getTemporalContext(),
+      }),
+    });
+
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || 'Failed to deploy CLRK subagents');
     }
 
-    setIsProcessing(true);
+    const data = (await response.json()) as AgentResponse;
+    if (!data.done && data.pendingClientCalls?.length) {
+      throw new Error('CLRK needs the main chat tool loop to finish this subagent command.');
+    }
+    return data.finalText || 'Done. I created the CLRK subagent request.';
+  }, []);
+
+  const sendToClrk = useCallback(async (userText: string) => {
+    if (!user) return;
 
     const userEntry: TranscriptEntry = {
       id: crypto.randomUUID(),
@@ -236,8 +270,40 @@ const LiveMode = () => {
     };
     setTranscript(prev => [...prev, userEntry]);
 
-    const newMessages = [...messages, { role: 'user', content: userText }];
+    const newMessages: AgentMessage[] = [...messages, { role: 'user', content: userText } as AgentMessage]
+      .filter((message): message is AgentMessage => message.role === 'user' || message.role === 'assistant');
     setMessages(newMessages);
+
+    if (isSubagentVoiceCommand(userText)) {
+      setIsProcessing(true);
+      try {
+        const reply = await runSubagentVoiceCommand(newMessages);
+        const assistantEntry: TranscriptEntry = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: reply,
+          timestamp: new Date(),
+        };
+        setTranscript(prev => [...prev, assistantEntry]);
+        setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+        speak(reply);
+      } catch (error) {
+        console.error('CLRK subagent voice error:', error);
+        toast.error(getErrorMessage(error));
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
+    // Check for device commands first
+    const cmd = parseCommand(userText);
+    if (cmd) {
+      handleDeviceCommand(cmd);
+      return;
+    }
+
+    setIsProcessing(true);
 
     try {
       const imageBase64 = captureFrame();
@@ -283,7 +349,7 @@ const LiveMode = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [user, messages, captureFrame, speak, parseCommand, handleDeviceCommand]);
+  }, [user, messages, runSubagentVoiceCommand, captureFrame, speak, parseCommand, handleDeviceCommand]);
 
   const startCamera = useCallback(async () => {
     try {
