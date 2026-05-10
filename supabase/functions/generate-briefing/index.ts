@@ -1,82 +1,151 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getIntelligenceFeed, loadUserIntelligenceContext } from "../_shared/intelligence-feed.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+type BriefingBody = {
+  userId?: string;
+  force?: boolean;
+  temporalContext?: {
+    clientTimestamp?: string;
+    clientTimezone?: string;
+    clientLocale?: string;
+  };
+};
+
+type GoalRow = {
+  title: string;
+  domain: string | null;
+  progress: number | null;
+  timeframe: string | null;
+  status: string | null;
+  description: string | null;
+  target_date: string | null;
+};
+
+type MemoryRow = { kind: string; content: string; importance: number | null; created_at: string };
+type TaskRow = { title: string; status: string; domain: string | null; autonomy_level: string | null; created_at: string; updated_at: string };
+type SubagentRow = { name: string; role: string; mission: string; status: string; domain: string | null; created_at: string };
+type HistoryRow = { source: string; kind: string; title: string | null; content: string; occurred_at: string };
+type DeviceRow = { device_name: string | null; data_type: string; value: number; unit: string; created_at: string };
+
+const list = (values: Array<string | null | undefined>, fallback = "Not specified") =>
+  values.filter(Boolean).join(", ") || fallback;
+
+const localDateParts = (temporalContext?: BriefingBody["temporalContext"]) => {
+  const now = new Date(temporalContext?.clientTimestamp || new Date().toISOString());
+  const locale = temporalContext?.clientLocale || "en-US";
+  const timeZone = temporalContext?.clientTimezone || "UTC";
+  try {
+    return {
+      today: new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now),
+      readable: new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(now),
+      timeZone,
+    };
+  } catch {
+    return { today: now.toISOString().slice(0, 10), readable: now.toISOString(), timeZone: "UTC" };
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { userId } = await req.json();
+    const { userId, force, temporalContext } = (await req.json()) as BriefingBody;
     if (!userId) throw new Error("userId required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) throw new Error("Supabase env not configured");
     const sb = createClient(supabaseUrl, supabaseKey);
+    const date = localDateParts(temporalContext);
 
-    // Check if briefing already exists for today
-    const today = new Date().toISOString().split("T")[0];
-    const { data: existing } = await sb
-      .from("daily_briefings")
-      .select("content")
-      .eq("user_id", userId)
-      .eq("briefing_date", today)
-      .single();
+    if (!force) {
+      const { data: existing } = await sb
+        .from("daily_briefings")
+        .select("content")
+        .eq("user_id", userId)
+        .eq("briefing_date", date.today)
+        .single();
 
-    if (existing) {
-      return new Response(JSON.stringify({ briefing: existing.content, cached: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (existing) {
+        return new Response(JSON.stringify({ briefing: existing.content, cached: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // Fetch user context
-    const [profileRes, goalsRes, domainsRes] = await Promise.all([
-      sb.from("profiles").select("display_name, roles, communication_style, risk_tolerance, current_challenges, top_priorities").eq("user_id", userId).single(),
-      sb.from("user_goals").select("title, domain, progress, timeframe, status").eq("user_id", userId).eq("status", "active"),
-      sb.from("user_domains").select("domain").eq("user_id", userId).eq("is_active", true),
+    const [
+      profileRes,
+      goalsRes,
+      domainsRes,
+      memoryRes,
+      taskRes,
+      subagentRes,
+      historyRes,
+      deviceRes,
+    ] = await Promise.all([
+      sb.from("profiles").select("*").eq("user_id", userId).single(),
+      sb.from("user_goals").select("title, domain, progress, timeframe, status, description, target_date").eq("user_id", userId).order("created_at", { ascending: false }).limit(12),
+      sb.from("user_domains").select("domain, priority").eq("user_id", userId).eq("is_active", true).order("priority", { ascending: true }),
+      sb.from("clrk_memory").select("kind, content, importance, created_at").eq("user_id", userId).order("importance", { ascending: false }).limit(12),
+      sb.from("clrk_tasks").select("title, status, domain, autonomy_level, created_at, updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(10),
+      sb.from("clrk_subagents").select("name, role, mission, status, domain, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(10),
+      sb.from("clrk_history_events").select("source, kind, title, content, occurred_at").eq("user_id", userId).order("occurred_at", { ascending: false }).limit(10),
+      sb.from("device_data_logs").select("device_name, data_type, value, unit, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(12),
     ]);
 
     const profile = profileRes.data;
-    const goals = goalsRes.data || [];
+    const goals = (goalsRes.data || []) as GoalRow[];
     const domains = (domainsRes.data || []).map((d: { domain: string }) => d.domain);
-
-    const now = new Date();
-    const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long" });
-    const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-    const goalsSection = goals.length > 0
-      ? goals.map((g: any) => "- " + g.title + " (" + g.domain + ", " + g.progress + "% complete, timeframe: " + g.timeframe + ")").join("\n")
-      : "No active goals set.";
+    const memories = (memoryRes.data || []) as MemoryRow[];
+    const tasks = (taskRes.data || []) as TaskRow[];
+    const subagents = (subagentRes.data || []) as SubagentRow[];
+    const history = (historyRes.data || []) as HistoryRow[];
+    const devices = (deviceRes.data || []) as DeviceRow[];
+    const intelligenceContext = await loadUserIntelligenceContext(sb, userId);
+    const intelligence = await getIntelligenceFeed(intelligenceContext, 10).catch(() => []);
 
     const prompt = [
-      "Generate a concise, actionable daily briefing for " + (profile?.display_name || "the user") + ".",
+      `Generate Charles' Daily Intelligence Briefing for ${date.readable}.`,
       "",
-      "Today is " + dayOfWeek + ", " + dateStr + ".",
+      "This must be deeply personal and grounded only in the data below. Do not invent data. If something is missing, say what is missing and what CLRK needs connected.",
       "",
-      "User context:",
-      "- Roles: " + (profile?.roles?.join(", ") || "Not specified"),
-      "- Active domains: " + (domains.join(", ") || "All"),
-      "- Communication style: " + (profile?.communication_style || "direct"),
-      "- Risk tolerance: " + (profile?.risk_tolerance || "moderate"),
-      "- Top priorities: " + (profile?.top_priorities?.join(", ") || "Not specified"),
-      "- Current challenges: " + (profile?.current_challenges?.join(", ") || "Not specified"),
+      "Profile:",
+      `- Name: ${profile?.display_name || "User"}`,
+      `- Roles: ${list(profile?.roles || [])}`,
+      `- Communication style: ${profile?.communication_style || "direct"}`,
+      `- Risk tolerance: ${profile?.risk_tolerance || "moderate"}`,
+      `- Top priorities: ${list(profile?.top_priorities || [])}`,
+      `- Current challenges: ${list(profile?.current_challenges || [])}`,
+      `- Active domains: ${list(domains)}`,
       "",
-      "Active goals:",
-      goalsSection,
+      "Goals:",
+      goals.length
+        ? goals.map((goal) => `- ${goal.title} [${goal.domain || "unknown"}], ${goal.status || "unknown"}, ${goal.progress ?? 0}% complete, timeframe ${goal.timeframe || "unset"}, target ${goal.target_date || "unset"}${goal.description ? `: ${goal.description}` : ""}`).join("\n")
+        : "- No goals found.",
       "",
-      "Write a briefing that is 3-5 paragraphs. Include:",
-      "1. A personalized greeting and day overview",
-      "2. Top 2-3 priorities for today based on their goals and challenges",
-      "3. One strategic insight or opportunity they should consider",
-      "4. An encouraging closing that matches their communication style",
+      "Memory and history signals:",
+      memories.length ? memories.map((memory) => `- [${memory.kind}] ${memory.content}`).join("\n") : "- No durable memory yet.",
+      history.length ? history.map((event) => `- [${event.source}/${event.kind}] ${event.title || event.content.slice(0, 80)}: ${event.content.slice(0, 180)}`).join("\n") : "- No recent history events.",
       "",
-      "Be specific to their situation. Reference their actual goals and challenges. Do NOT use markdown headers or bullet points — write in flowing prose paragraphs. Keep it under 200 words.",
+      "Runtime operations:",
+      tasks.length ? tasks.map((task) => `- Task ${task.status}: ${task.title} [${task.domain || "none"} / ${task.autonomy_level || "unset"}]`).join("\n") : "- No CLRK tasks active.",
+      subagents.length ? subagents.map((agent) => `- ${agent.name} (${agent.status}) ${agent.role}: ${agent.mission}`).join("\n") : "- No CLRK subagents active.",
+      devices.length ? devices.map((device) => `- ${device.device_name || "Device"} ${device.data_type}: ${device.value} ${device.unit} at ${device.created_at}`).join("\n") : "- No recent device data.",
+      "",
+      "Current external intelligence relevant to mission/goals:",
+      intelligence.length ? intelligence.map((item) => `- [${item.category}] ${item.title} (${item.source}) relevance ${item.relevance}: ${item.summary.slice(0, 160)}`).join("\n") : "- No current intelligence feed available.",
+      "",
+      "Write 5 compact sections in plain prose with short labels: 1) Reality Check, 2) Mission Priorities, 3) Market/News Signals, 4) Risks & Decisions, 5) Next 3 Actions.",
+      "Make it specific to the user's goals, subagents, tasks, memories, and current intelligence. Include direct recommendations, but label investment/political items as decision-support, not financial/legal advice. Keep it under 350 words.",
     ].join("\n");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -88,45 +157,36 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: "You are CLRK, a personal intelligence system. Generate a daily briefing that is strategic, actionable, and personalized. Write in clean prose paragraphs without markdown formatting." },
+          { role: "system", content: "You are CLRK, a personal intelligence chief of staff. Produce precise daily briefings grounded in the supplied user data and current intelligence. Never fabricate private data." },
           { role: "user", content: prompt },
         ],
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited. Try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("Gateway error:", response.status, t);
+      if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limited. Try again shortly." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (response.status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error("Gateway error:", response.status, await response.text());
       throw new Error("AI gateway error");
     }
 
     const data = await response.json();
     const briefingContent = data.choices?.[0]?.message?.content || "Unable to generate briefing today.";
 
-    // Save briefing
     await sb.from("daily_briefings").upsert({
       user_id: userId,
-      briefing_date: today,
+      briefing_date: date.today,
       content: briefingContent,
     }, { onConflict: "user_id,briefing_date" });
 
-    return new Response(JSON.stringify({ briefing: briefingContent, cached: false }), {
+    return new Response(JSON.stringify({ briefing: briefingContent, cached: false, generatedAt: new Date().toISOString() }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("Error:", e);
+    console.error("generate-briefing error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

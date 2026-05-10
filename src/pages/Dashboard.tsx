@@ -31,6 +31,12 @@ interface Profile { display_name: string; onboarding_completed: boolean; }
 interface Goal { id: string; title: string; domain: string; progress: number; status: string; timeframe: string; }
 interface Domain { domain: string; priority: number; is_active: boolean; }
 
+const getTemporalContext = () => ({
+  clientTimestamp: new Date().toISOString(),
+  clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  clientLocale: navigator.language || 'en-US',
+});
+
 const Dashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -72,7 +78,7 @@ const Dashboard = () => {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-            body: JSON.stringify({ userId: user.id }),
+            body: JSON.stringify({ userId: user.id, force: true, temporalContext: getTemporalContext() }),
           }
         );
         if (resp.ok) {
@@ -184,7 +190,7 @@ const Dashboard = () => {
                 <Zap className="w-4 h-4" /> CLRK Activity Feed
               </h3>
               <span className="text-[9px] font-mono text-green-400 flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE DB
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE INTEL
               </span>
             </div>
             <ClrkActivityFeed goalCount={goals.length} domainCount={domains.length} />

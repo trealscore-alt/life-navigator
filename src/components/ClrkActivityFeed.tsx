@@ -9,12 +9,15 @@ import { useAuth } from '@/hooks/useAuth';
 
 interface ClrkAction {
   id: string;
-  type: 'scan' | 'alert' | 'action' | 'insight' | 'defense' | 'optimization';
+  type: 'scan' | 'alert' | 'action' | 'insight' | 'defense' | 'optimization' | 'news' | 'markets' | 'politics';
   title: string;
   detail: string;
   timestamp: Date;
   domain?: string;
   status: 'running' | 'completed' | 'pending';
+  source?: string;
+  url?: string;
+  relevance?: number;
 }
 
 type RuntimeError = { message?: string };
@@ -84,14 +87,28 @@ type BriefingRow = {
   created_at: string;
 };
 
+type IntelligenceItem = {
+  id: string;
+  category: 'markets' | 'world' | 'national' | 'local' | 'politics' | 'investing' | 'mission';
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  publishedAt?: string | null;
+  relevance: number;
+  matchedTerms: string[];
+};
+
 const ICONS: Record<string, typeof Eye> = {
   scan: Eye, alert: AlertTriangle, action: Zap,
   insight: Brain, defense: Shield, optimization: TrendingUp,
+  news: Radio, markets: Activity, politics: Shield,
 };
 
 const COLORS: Record<string, string> = {
   scan: 'text-primary', alert: 'text-yellow-400', action: 'text-accent',
   insight: 'text-purple-400', defense: 'text-green-400', optimization: 'text-primary',
+  news: 'text-blue-300', markets: 'text-green-300', politics: 'text-red-300',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -106,6 +123,14 @@ const toFeedStatus = (status: string): ClrkAction['status'] => {
 
 const truncate = (text: string, length = 130) =>
   text.length > length ? `${text.slice(0, length - 1).trim()}...` : text;
+
+const INTELLIGENCE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clrk-intelligence-feed`;
+
+const feedTypeForCategory = (category: IntelligenceItem['category']): ClrkAction['type'] => {
+  if (category === 'markets' || category === 'investing') return 'markets';
+  if (category === 'politics') return 'politics';
+  return 'news';
+};
 
 export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { goalCount?: number; domainCount?: number }) {
   const { user } = useAuth();
@@ -123,7 +148,16 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
       setLoading(true);
       setError(null);
 
-      const [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes] = await Promise.all([
+      const intelligencePromise = fetch(INTELLIGENCE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, limit: 24 }),
+      }).then(async (response) => {
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Intelligence feed ${response.status}`);
+        return await response.json() as { items?: IntelligenceItem[] };
+      });
+
+      const [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes, intelligenceRes] = await Promise.all([
         runtimeDb.from<TaskRow>('clrk_tasks')
           .select('id, title, status, domain, updated_at, created_at')
           .eq('user_id', user.id)
@@ -154,6 +188,10 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(3),
+        intelligencePromise.then(
+          (data) => ({ data: data.items || [], error: null }),
+          (feedError: Error) => ({ data: [] as IntelligenceItem[], error: { message: feedError.message } }),
+        ),
       ]);
 
       if (cancelled) return;
@@ -168,6 +206,18 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
       }
 
       const liveActions: ClrkAction[] = [
+        ...(intelligenceRes.data || []).map((item) => ({
+          id: `intel-${item.id}`,
+          type: feedTypeForCategory(item.category),
+          title: item.title,
+          detail: truncate(item.summary || item.title, 180),
+          timestamp: new Date(item.publishedAt || Date.now()),
+          domain: item.category,
+          status: 'completed' as const,
+          source: item.source,
+          url: item.url,
+          relevance: item.relevance,
+        })),
         ...(taskRes.data || []).map((task) => ({
           id: `task-${task.id}`,
           type: 'action' as const,
@@ -224,6 +274,9 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
       ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 14);
 
       setActions(liveActions);
+      if (intelligenceRes.error?.message && liveActions.length === 0) {
+        setError(intelligenceRes.error.message);
+      }
       setLoading(false);
     };
 
@@ -257,16 +310,8 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
         {actions.map((action) => {
           const Icon = ICONS[action.type] || Zap;
           const color = COLORS[action.type] || 'text-primary';
-          return (
-            <motion.div
-              key={action.id}
-              layout
-              initial={{ opacity: 0, x: -20, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              className="flex gap-3 items-start p-3 rounded-lg bg-secondary/20 border border-border/30 hover:border-primary/30 transition-colors group"
-            >
+          const content = (
+            <>
               <div className={`p-1.5 rounded-md bg-secondary/50 ${color} flex-shrink-0`}>
                 <Icon className="w-3.5 h-3.5" />
               </div>
@@ -280,6 +325,12 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
                   {action.domain && (
                     <span className="text-[9px] font-mono text-primary/60 uppercase">{action.domain}</span>
                   )}
+                  {action.source && (
+                    <span className="text-[9px] text-foreground/50">{action.source}</span>
+                  )}
+                  {typeof action.relevance === 'number' && (
+                    <span className="text-[9px] text-green-300/70">{action.relevance}% match</span>
+                  )}
                   <span className="text-[9px] text-muted-foreground/50">
                     {action.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -289,6 +340,36 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
                 <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-mono text-primary flex items-center gap-0.5 flex-shrink-0">
                   Act <ArrowRight className="w-3 h-3" />
                 </button>
+              )}
+              {action.url && (
+                <ArrowRight className="w-3 h-3 text-muted-foreground/50 flex-shrink-0" />
+              )}
+            </>
+          );
+
+          return (
+            <motion.div
+              key={action.id}
+              layout
+              initial={{ opacity: 0, x: -20, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="group"
+            >
+              {action.url ? (
+                <a
+                  href={action.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex gap-3 items-start p-3 rounded-lg bg-secondary/20 border border-border/30 hover:border-primary/30 transition-colors"
+                >
+                  {content}
+                </a>
+              ) : (
+                <div className="flex gap-3 items-start p-3 rounded-lg bg-secondary/20 border border-border/30 hover:border-primary/30 transition-colors">
+                  {content}
+                </div>
               )}
             </motion.div>
           );
