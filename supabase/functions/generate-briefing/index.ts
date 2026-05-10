@@ -102,7 +102,7 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, supabaseKey);
     const date = localDateParts(temporalContext);
 
-    if (!force) {
+    if (force === false) {
       const { data: existing } = await sb
         .from("daily_briefings")
         .select("content")

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Shield, TrendingUp, AlertTriangle, Zap, Eye,
@@ -137,162 +137,192 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
   const [actions, setActions] = useState<ClrkAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+
+  const loadFeed = useCallback(async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    const runtimeDb = supabase as unknown as RuntimeDb;
+
+    setLoading(true);
+    setError(null);
+
+    const intelligencePromise = fetch(INTELLIGENCE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ userId: user.id, limit: 24 }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Intelligence feed ${response.status}`);
+      return await response.json() as { items?: IntelligenceItem[] };
+    });
+
+    const safeRuntimeQuery = async <T,>(query: PromiseLike<{ data: T[] | null; error: RuntimeError | null }>) => {
+      try {
+        const result = await query;
+        return result.error ? { data: [] as T[], error: result.error.message || 'Query failed' } : { data: result.data || [], error: null };
+      } catch (queryError) {
+        return { data: [] as T[], error: queryError instanceof Error ? queryError.message : 'Query failed' };
+      }
+    };
+
+    const [
+      taskRes,
+      subagentRes,
+      runRes,
+      historyRes,
+      deviceRes,
+      briefingRes,
+      intelligenceRes,
+    ] = await Promise.all([
+      safeRuntimeQuery(runtimeDb.from<TaskRow>('clrk_tasks')
+        .select('id, title, status, domain, updated_at, created_at')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(8)),
+      safeRuntimeQuery(runtimeDb.from<SubagentRow>('clrk_subagents')
+        .select('id, name, role, status, domain, last_deployed_at, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(8)),
+      safeRuntimeQuery(runtimeDb.from<SubagentRunRow>('clrk_subagent_runs')
+        .select('id, objective, status, created_at, completed_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(8)),
+      safeRuntimeQuery(runtimeDb.from<HistoryEventRow>('clrk_history_events')
+        .select('id, source, kind, title, content, occurred_at')
+        .eq('user_id', user.id)
+        .order('occurred_at', { ascending: false })
+        .limit(8)),
+      safeRuntimeQuery(supabase.from('device_data_logs')
+        .select('id, device_name, data_type, value, unit, processed, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(8)),
+      safeRuntimeQuery(supabase.from('daily_briefings')
+        .select('id, briefing_date, content, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(3)),
+      intelligencePromise.then(
+        (data) => ({ data: data.items || [], error: null }),
+        (feedError: Error) => ({ data: [] as IntelligenceItem[], error: feedError.message }),
+      ),
+    ]);
+
+    const liveActions: ClrkAction[] = [
+      ...(intelligenceRes.data || []).map((item) => ({
+        id: `intel-${item.id}`,
+        type: feedTypeForCategory(item.category),
+        title: item.title,
+        detail: truncate(item.summary || item.title, 180),
+        timestamp: new Date(item.publishedAt || Date.now()),
+        domain: item.category,
+        status: 'completed' as const,
+        source: item.source,
+        url: item.url,
+        relevance: item.relevance,
+      })),
+      ...(taskRes.data || []).map((task) => ({
+        id: `task-${task.id}`,
+        type: 'action' as const,
+        title: `Task ${task.status.replace(/_/g, ' ')}`,
+        detail: task.title,
+        timestamp: new Date(task.updated_at || task.created_at),
+        domain: task.domain || undefined,
+        status: toFeedStatus(task.status),
+      })),
+      ...(subagentRes.data || []).map((agent) => ({
+        id: `subagent-${agent.id}`,
+        type: 'defense' as const,
+        title: `${agent.name} ${agent.status}`,
+        detail: `${agent.role}: ${agent.status === 'deployed' ? 'actively assigned' : 'available for assignment'}`,
+        timestamp: new Date(agent.last_deployed_at || agent.created_at),
+        domain: agent.domain || undefined,
+        status: toFeedStatus(agent.status),
+      })),
+      ...(runRes.data || []).map((run) => ({
+        id: `run-${run.id}`,
+        type: 'scan' as const,
+        title: `Subagent run ${run.status.replace(/_/g, ' ')}`,
+        detail: truncate(run.objective),
+        timestamp: new Date(run.completed_at || run.created_at),
+        status: toFeedStatus(run.status),
+      })),
+      ...(historyRes.data || []).map((event) => ({
+        id: `history-${event.id}`,
+        type: event.source === 'device' ? 'scan' as const : 'insight' as const,
+        title: event.title || `${event.source} ${event.kind}`,
+        detail: truncate(event.content),
+        timestamp: new Date(event.occurred_at),
+        domain: event.source,
+        status: 'completed' as const,
+      })),
+      ...(deviceRes.data || []).map((reading: DeviceReadingRow) => ({
+        id: `device-${reading.id}`,
+        type: 'scan' as const,
+        title: `${reading.device_name || 'Device'} reading`,
+        detail: `${reading.data_type}: ${reading.value} ${reading.unit}${reading.processed ? ' processed by CLRK' : ' awaiting analysis'}`,
+        timestamp: new Date(reading.created_at),
+        domain: 'devices',
+        status: reading.processed ? 'completed' as const : 'pending' as const,
+      })),
+      ...(briefingRes.data || []).map((briefing: BriefingRow) => ({
+        id: `briefing-${briefing.id}`,
+        type: 'insight' as const,
+        title: `Daily briefing ${briefing.briefing_date}`,
+        detail: truncate(briefing.content),
+        timestamp: new Date(briefing.created_at),
+        domain: 'briefing',
+        status: 'completed' as const,
+      })),
+    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 14);
+
+    const softErrors = [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes, intelligenceRes]
+      .map((res) => res.error)
+      .filter(Boolean);
+    setActions(liveActions);
+    setUpdatedAt(new Date());
+    setError(liveActions.length === 0 && softErrors.length > 0 ? softErrors[0] || null : null);
+    setLoading(false);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
-    const runtimeDb = supabase as unknown as RuntimeDb;
     let cancelled = false;
-
-    const loadFeed = async () => {
-      setLoading(true);
-      setError(null);
-
-      const intelligencePromise = fetch(INTELLIGENCE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ userId: user.id, limit: 24 }),
-      }).then(async (response) => {
-        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Intelligence feed ${response.status}`);
-        return await response.json() as { items?: IntelligenceItem[] };
-      });
-
-      const [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes, intelligenceRes] = await Promise.all([
-        runtimeDb.from<TaskRow>('clrk_tasks')
-          .select('id, title, status, domain, updated_at, created_at')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false })
-          .limit(8),
-        runtimeDb.from<SubagentRow>('clrk_subagents')
-          .select('id, name, role, status, domain, last_deployed_at, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(8),
-        runtimeDb.from<SubagentRunRow>('clrk_subagent_runs')
-          .select('id, objective, status, created_at, completed_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(8),
-        runtimeDb.from<HistoryEventRow>('clrk_history_events')
-          .select('id, source, kind, title, content, occurred_at')
-          .eq('user_id', user.id)
-          .order('occurred_at', { ascending: false })
-          .limit(8),
-        supabase.from('device_data_logs')
-          .select('id, device_name, data_type, value, unit, processed, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(8),
-        supabase.from('daily_briefings')
-          .select('id, briefing_date, content, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(3),
-        intelligencePromise.then(
-          (data) => ({ data: data.items || [], error: null }),
-          (feedError: Error) => ({ data: [] as IntelligenceItem[], error: { message: feedError.message } }),
-        ),
-      ]);
-
+    const guardedLoad = async () => {
       if (cancelled) return;
-
-      const firstError = [taskRes, subagentRes, runRes, historyRes, deviceRes, briefingRes]
-        .find((res) => res.error)?.error?.message;
-      if (firstError) {
-        setError(firstError);
-        setActions([]);
-        setLoading(false);
-        return;
-      }
-
-      const liveActions: ClrkAction[] = [
-        ...(intelligenceRes.data || []).map((item) => ({
-          id: `intel-${item.id}`,
-          type: feedTypeForCategory(item.category),
-          title: item.title,
-          detail: truncate(item.summary || item.title, 180),
-          timestamp: new Date(item.publishedAt || Date.now()),
-          domain: item.category,
-          status: 'completed' as const,
-          source: item.source,
-          url: item.url,
-          relevance: item.relevance,
-        })),
-        ...(taskRes.data || []).map((task) => ({
-          id: `task-${task.id}`,
-          type: 'action' as const,
-          title: `Task ${task.status.replace(/_/g, ' ')}`,
-          detail: task.title,
-          timestamp: new Date(task.updated_at || task.created_at),
-          domain: task.domain || undefined,
-          status: toFeedStatus(task.status),
-        })),
-        ...(subagentRes.data || []).map((agent) => ({
-          id: `subagent-${agent.id}`,
-          type: 'defense' as const,
-          title: `${agent.name} ${agent.status}`,
-          detail: `${agent.role}: ${agent.status === 'deployed' ? 'actively assigned' : 'available for assignment'}`,
-          timestamp: new Date(agent.last_deployed_at || agent.created_at),
-          domain: agent.domain || undefined,
-          status: toFeedStatus(agent.status),
-        })),
-        ...(runRes.data || []).map((run) => ({
-          id: `run-${run.id}`,
-          type: 'scan' as const,
-          title: `Subagent run ${run.status.replace(/_/g, ' ')}`,
-          detail: truncate(run.objective),
-          timestamp: new Date(run.completed_at || run.created_at),
-          status: toFeedStatus(run.status),
-        })),
-        ...(historyRes.data || []).map((event) => ({
-          id: `history-${event.id}`,
-          type: event.source === 'device' ? 'scan' as const : 'insight' as const,
-          title: event.title || `${event.source} ${event.kind}`,
-          detail: truncate(event.content),
-          timestamp: new Date(event.occurred_at),
-          domain: event.source,
-          status: 'completed' as const,
-        })),
-        ...(deviceRes.data || []).map((reading: DeviceReadingRow) => ({
-          id: `device-${reading.id}`,
-          type: 'scan' as const,
-          title: `${reading.device_name || 'Device'} reading`,
-          detail: `${reading.data_type}: ${reading.value} ${reading.unit}${reading.processed ? ' processed by CLRK' : ' awaiting analysis'}`,
-          timestamp: new Date(reading.created_at),
-          domain: 'devices',
-          status: reading.processed ? 'completed' as const : 'pending' as const,
-        })),
-        ...(briefingRes.data || []).map((briefing: BriefingRow) => ({
-          id: `briefing-${briefing.id}`,
-          type: 'insight' as const,
-          title: `Daily briefing ${briefing.briefing_date}`,
-          detail: truncate(briefing.content),
-          timestamp: new Date(briefing.created_at),
-          domain: 'briefing',
-          status: 'completed' as const,
-        })),
-      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 14);
-
-      setActions(liveActions);
-      if (intelligenceRes.error?.message && liveActions.length === 0) {
-        setError(intelligenceRes.error.message);
-      }
-      setLoading(false);
+      await loadFeed();
     };
 
-    loadFeed();
-    const timer = window.setInterval(loadFeed, 30000);
+    guardedLoad();
+    const timer = window.setInterval(guardedLoad, 30000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [user]);
+  }, [loadFeed, user]);
 
   return (
     <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin">
+      <div className="flex items-center justify-between rounded-lg border border-border/30 bg-secondary/10 px-3 py-2">
+        <span className="text-[9px] font-mono text-muted-foreground">
+          {updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading live intelligence'}
+        </span>
+        <button
+          type="button"
+          onClick={loadFeed}
+          className="text-[9px] font-mono text-primary hover:text-primary/80"
+        >
+          Refresh
+        </button>
+      </div>
       {loading && (
         <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-secondary/20 p-3 text-[10px] font-mono text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
