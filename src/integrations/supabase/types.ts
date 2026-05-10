@@ -967,8 +967,6 @@ export type Database = {
           similarity: number
         }[]
       }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       agent_trust_level: "trusted" | "limited" | "untrusted"
