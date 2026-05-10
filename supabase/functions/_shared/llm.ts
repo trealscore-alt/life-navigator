@@ -66,7 +66,7 @@ async function chatAnthropic(opts: LLMOptions): Promise<ModelResponse> {
 
   const body: Record<string, unknown> = {
     model,
-    max_tokens: opts.maxTokens ?? 4096,
+    max_tokens: opts.maxTokens ?? 1024,
     system: opts.systemPrompt,
     messages: opts.messages,
   };
