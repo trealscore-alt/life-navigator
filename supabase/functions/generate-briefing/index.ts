@@ -181,8 +181,18 @@ serve(async (req) => {
       "Current external intelligence relevant to mission/goals:",
       intelligence.length ? intelligence.map((item) => `- [${item.category}] ${item.title} (${item.source}) relevance ${item.relevance}: ${item.summary.slice(0, 160)}`).join("\n") : "- No current intelligence feed available.",
       "",
-      "Write 5 compact sections in plain prose with short labels: 1) Reality Check, 2) Mission Priorities, 3) Market/News Signals, 4) Risks & Decisions, 5) Next 3 Actions.",
-      "Make it specific to the user's goals, subagents, tasks, memories, and current intelligence. Include direct recommendations, but label investment/political items as decision-support, not financial/legal advice. Keep it under 350 words.",
+      `OUTPUT FORMAT (mandatory, use these exact markdown headers in this order):`,
+      `**Reality Check** — One short paragraph. MUST start with "Good morning/afternoon/evening, ${userName}." Use today's exact date (${date.readable}). Reference the user's actual top priorities and current challenges verbatim from above.`,
+      `**Mission Priorities** — 3 bullets. Each bullet must reference a real goal title from above by name and a concrete next move tied to its current % progress.`,
+      `**Market & News Signals** — 3-5 bullets. Each bullet cites ONE real headline from the intelligence list above (exact title + source in parens). Add one sentence on why it matters to ${userName}'s goals/priorities. If the list is empty, say "No live intel feed connected today."`,
+      `**Risks & Decisions** — 2-3 bullets. Tie risks to the user's actual challenges and goals. Label investment/political content as decision-support, not financial/legal advice.`,
+      `**Next 3 Actions** — Numbered 1, 2, 3. Each action concrete, verb-led, doable today, tied to a specific named goal or challenge.`,
+      "",
+      "HARD RULES:",
+      `- Address the user as "${userName}" — never as "Creator", "Founder", "Agent", or any role title.`,
+      `- Use TODAY'S date exactly: ${date.readable}. Do not output any other date.`,
+      "- Quote real goal titles, real challenge phrases, and real news headlines exactly as given. Do NOT invent any business names, debts, jobs, people, or events not in the data above.",
+      "- Keep total under 400 words. No preamble. Start directly with **Reality Check**.",
     ].join("\n");
 
     if (!LOVABLE_API_KEY) {
@@ -210,9 +220,9 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "You are CLRK, a personal intelligence chief of staff. Produce precise daily briefings grounded in the supplied user data and current intelligence. Never fabricate private data." },
+          { role: "system", content: `You are CLRK, ${userName}'s personal intelligence chief of staff. Produce a deeply personal daily briefing using ONLY the supplied data and intelligence. Never fabricate facts. Always address the user by their display name "${userName}". Always use the exact date provided. Follow the output format precisely.` },
           { role: "user", content: prompt },
         ],
       }),
