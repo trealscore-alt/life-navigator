@@ -90,12 +90,7 @@ const DeviceHub = () => {
   } = useBluetooth();
   const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [lastAnalysis, setLastAnalysis] = useState<{
-    insight: string;
-    alerts: string[];
-    goalUpdates: { goalId: string; newProgress: number }[];
-    deviceInsights?: { device: string; status: string; note: string }[];
-  } | null>(null);
+  const [lastAnalysis, setLastAnalysis] = useState<DeviceAnalysis | null>(null);
   const syncBufferRef = useRef<DeviceReading[]>([]);
 
   const connectedCount = devices.filter(d => d.connected).length;
