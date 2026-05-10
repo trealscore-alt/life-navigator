@@ -36,6 +36,42 @@ type DeviceRow = { device_name: string | null; data_type: string; value: number;
 const list = (values: Array<string | null | undefined>, fallback = "Not specified") =>
   values.filter(Boolean).join(", ") || fallback;
 
+const sentenceList = (values: string[], fallback: string) => {
+  const cleaned = values.filter(Boolean);
+  if (cleaned.length === 0) return fallback;
+  if (cleaned.length === 1) return cleaned[0];
+  return `${cleaned.slice(0, -1).join(", ")} and ${cleaned[cleaned.length - 1]}`;
+};
+
+const buildGroundedBriefing = (
+  dateReadable: string,
+  profile: Record<string, unknown> | null,
+  goals: GoalRow[],
+  memories: MemoryRow[],
+  tasks: TaskRow[],
+  subagents: SubagentRow[],
+  devices: DeviceRow[],
+  intelligence: Array<{ category: string; title: string; source: string; relevance: number }>,
+) => {
+  const name = typeof profile?.display_name === "string" ? profile.display_name : "Charles";
+  const priorities = Array.isArray(profile?.top_priorities) ? profile.top_priorities.filter((item): item is string => typeof item === "string") : [];
+  const challenges = Array.isArray(profile?.current_challenges) ? profile.current_challenges.filter((item): item is string => typeof item === "string") : [];
+  const activeGoals = goals.filter((goal) => goal.status === "active");
+  const topGoals = activeGoals.slice(0, 3).map((goal) => `${goal.title} (${goal.progress ?? 0}% complete)`);
+  const activeTasks = tasks.filter((task) => !["completed", "failed", "cancelled"].includes(task.status)).slice(0, 3);
+  const activeAgents = subagents.filter((agent) => !["completed", "failed", "archived"].includes(agent.status)).slice(0, 3);
+  const marketSignals = intelligence.filter((item) => ["markets", "investing"].includes(item.category)).slice(0, 2);
+  const newsSignals = intelligence.filter((item) => !["markets", "investing"].includes(item.category)).slice(0, 3);
+
+  return [
+    `Reality Check: ${name}, today is ${dateReadable}. CLRK is tracking ${activeGoals.length} active goal${activeGoals.length === 1 ? "" : "s"}, ${activeTasks.length} active task${activeTasks.length === 1 ? "" : "s"}, and ${activeAgents.length} active subagent${activeAgents.length === 1 ? "" : "s"}. Your stated priorities are ${sentenceList(priorities, "not fully defined yet")}. Your current friction points are ${sentenceList(challenges, "not fully captured yet")}.`,
+    `Mission Priorities: Focus first on ${sentenceList(topGoals, "defining one clear mission goal inside CLRK")}. ${activeTasks.length ? `The live task queue is led by ${sentenceList(activeTasks.map((task) => `${task.title} (${task.status})`), "no active tasks")}.` : "There are no live tasks yet, so CLRK needs a concrete mission to execute against."} ${activeAgents.length ? `The active agent layer includes ${sentenceList(activeAgents.map((agent) => `${agent.name} for ${agent.role}`), "no active agents")}.` : "No active subagents are currently carrying work."}`,
+    `Market/News Signals: ${marketSignals.length ? sentenceList(marketSignals.map((item) => `${item.title} from ${item.source}`), "No market feed items loaded") : "No market feed items loaded."} ${newsSignals.length ? `Broader current-event signals include ${sentenceList(newsSignals.map((item) => `${item.title} from ${item.source}`), "no current-event items")}.` : "No world, national, political, or local news signal loaded yet."} Treat these as decision-support signals, not financial or legal advice.`,
+    `Risks & Decisions: ${memories.length ? `Relevant memory includes ${sentenceList(memories.slice(0, 3).map((memory) => memory.content), "no durable memory")}.` : "CLRK has little durable memory to personalize from yet."} ${devices.length ? `Recent device context includes ${sentenceList(devices.slice(0, 3).map((device) => `${device.device_name || "device"} ${device.data_type} ${device.value} ${device.unit}`), "no device data")}.` : "No recent device data is connected, so health, environment, vehicle, and robot context remains limited."}`,
+    `Next 3 Actions: First, confirm or update your top three mission priorities so CLRK can rank news and market signals correctly. Second, create or deploy subagents for the highest-leverage goal if they are not already assigned. Third, connect the missing data sources you want reflected in briefings, especially calendar, location, financial watchlist, device mesh, and robot runtime.`,
+  ].join("\n\n");
+};
+
 const localDateParts = (temporalContext?: BriefingBody["temporalContext"]) => {
   const now = new Date(temporalContext?.clientTimestamp || new Date().toISOString());
   const locale = temporalContext?.clientLocale || "en-US";
@@ -59,7 +95,6 @@ serve(async (req) => {
     if (!userId) throw new Error("userId required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -147,6 +182,24 @@ serve(async (req) => {
       "Write 5 compact sections in plain prose with short labels: 1) Reality Check, 2) Mission Priorities, 3) Market/News Signals, 4) Risks & Decisions, 5) Next 3 Actions.",
       "Make it specific to the user's goals, subagents, tasks, memories, and current intelligence. Include direct recommendations, but label investment/political items as decision-support, not financial/legal advice. Keep it under 350 words.",
     ].join("\n");
+
+    if (!LOVABLE_API_KEY) {
+      const briefingContent = buildGroundedBriefing(date.readable, profile, goals, memories, tasks, subagents, devices, intelligence);
+      await sb.from("daily_briefings").upsert({
+        user_id: userId,
+        briefing_date: date.today,
+        content: briefingContent,
+      }, { onConflict: "user_id,briefing_date" });
+
+      return new Response(JSON.stringify({
+        briefing: briefingContent,
+        cached: false,
+        generatedAt: new Date().toISOString(),
+        mode: "grounded_live_data",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

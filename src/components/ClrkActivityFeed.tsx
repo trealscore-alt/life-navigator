@@ -150,7 +150,10 @@ export default function ClrkActivityFeed({ goalCount = 0, domainCount = 0 }: { g
 
       const intelligencePromise = fetch(INTELLIGENCE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
         body: JSON.stringify({ userId: user.id, limit: 24 }),
       }).then(async (response) => {
         if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Intelligence feed ${response.status}`);
